@@ -175,6 +175,7 @@ class TeleGhostBridge:
             on_post_deleted=self._handle_ws_delete,
             on_reaction_added=self._handle_ws_reaction_added,
             on_reaction_removed=self._handle_ws_reaction_removed,
+            on_typing=self._handle_ws_typing,
         )
         await self._ws.start()
 
@@ -659,6 +660,29 @@ class TeleGhostBridge:
             )
         except Exception as e:
             logger.error("TG clear_reaction error: %s", e)
+
+    async def _handle_ws_typing(self, typing_info: dict):
+        """Handle MM typing event → send 'typing' chat action to Telegram."""
+        channel_id = typing_info.get("channel_id", "")
+        user_id = typing_info.get("user_id", "")
+
+        if channel_id not in self._dm_to_user:
+            return
+
+        user, bot = self._dm_to_user[channel_id]
+
+        # Only relay typing from bots, not from the user themselves
+        if user_id == user.mm_user_id:
+            return
+
+        try:
+            await self._tg_bot.send_chat_action(
+                chat_id=user.telegram_id,
+                action="typing",
+            )
+            logger.debug("WS→TG typing [%s←%s]", user.telegram_name, bot.name)
+        except Exception as e:
+            logger.error("TG send_chat_action error: %s", e)
 
     async def _retry_mm_post(
         self, user: UserMapping, channel_id: str, text: str,

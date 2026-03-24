@@ -15,6 +15,7 @@ EVENT_POST_EDITED = "post_edited"
 EVENT_POST_DELETED = "post_deleted"
 EVENT_REACTION_ADDED = "reaction_added"
 EVENT_REACTION_REMOVED = "reaction_removed"
+EVENT_TYPING = "typing"
 
 
 class MattermostWebSocket:
@@ -33,6 +34,7 @@ class MattermostWebSocket:
         on_post_deleted: Callable[[dict], Awaitable[None]] | None = None,
         on_reaction_added: Callable[[dict], Awaitable[None]] | None = None,
         on_reaction_removed: Callable[[dict], Awaitable[None]] | None = None,
+        on_typing: Callable[[dict], Awaitable[None]] | None = None,
         reconnect_base: float = 2.0,
         reconnect_max: float = 60.0,
     ):
@@ -43,6 +45,7 @@ class MattermostWebSocket:
         self.on_post_deleted = on_post_deleted
         self.on_reaction_added = on_reaction_added
         self.on_reaction_removed = on_reaction_removed
+        self.on_typing = on_typing
         self._reconnect_base = reconnect_base
         self._reconnect_max = reconnect_max
         self._seq = 1
@@ -237,3 +240,17 @@ class MattermostWebSocket:
                         await self.on_reaction_removed(reaction)
                     except Exception as e:
                         logger.error("Error handling reaction_removed: %s", e, exc_info=True)
+
+        elif event == EVENT_TYPING:
+            if self.on_typing:
+                evt_data = data.get("data", {})
+                broadcast = data.get("broadcast", {})
+                typing_info = {
+                    "user_id": evt_data.get("user_id") or broadcast.get("user_id", ""),
+                    "channel_id": broadcast.get("channel_id", ""),
+                }
+                if typing_info["user_id"] and typing_info["channel_id"]:
+                    try:
+                        await self.on_typing(typing_info)
+                    except Exception as e:
+                        logger.error("Error handling typing: %s", e, exc_info=True)
