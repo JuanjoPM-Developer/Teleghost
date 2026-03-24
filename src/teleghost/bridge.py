@@ -19,6 +19,7 @@ from .config import Config, UserMapping
 from .health import HealthServer
 from .markdown import mm_to_telegram
 from .mattermost import MattermostClient
+from .websocket import MattermostWebSocket
 
 logger = logging.getLogger("teleghost.bridge")
 
@@ -76,12 +77,15 @@ class TeleGhostBridge:
         self._our_post_ids: deque[str] = deque(maxlen=1000)
         self._running = False
         self._tg_bot = None
+        self._ws: MattermostWebSocket | None = None
+        # Track DM channels we're interested in → user mapping
+        self._dm_to_user: dict[str, tuple[UserMapping, object]] = {}
         # Health server
         self.health = HealthServer(port=config.health_port)
 
     async def start(self):
         """Start the bridge."""
-        logger.info("TeleGhost v0.0.2 starting...")
+        logger.info("TeleGhost v0.1.0 starting (WebSocket mode)...")
 
         # Auto-discover DM channels for all bot routes
         for user in self.config.users:
@@ -102,6 +106,10 @@ class TeleGhostBridge:
                             user.telegram_name, bot.name
                         )
 
+                # Build reverse lookup: DM channel → (user, bot)
+                if bot.mm_dm_channel:
+                    self._dm_to_user[bot.mm_dm_channel] = (user, bot)
+
             # Legacy compatibility
             if not user.mm_dm_channel and user.mm_target_bot and not user.bots:
                 channel = await self.mm.get_dm_channel(
@@ -109,20 +117,6 @@ class TeleGhostBridge:
                 )
                 if channel:
                     user.mm_dm_channel = channel
-
-        # Seed last_post_ids so we don't replay old messages
-        for user in self.config.users:
-            for bot in user.bots:
-                if bot.mm_dm_channel:
-                    try:
-                        posts = await self.mm.get_posts_after(
-                            self.config.mm_bot_token, bot.mm_dm_channel, ""
-                        )
-                        if posts:
-                            self._last_post_ids[bot.mm_dm_channel] = posts[-1]["id"]
-                    except Exception as e:
-                        logger.error("Failed to seed posts for %s→%s: %s",
-                                     user.telegram_name, bot.name, e)
 
         # Build Telegram application
         app = ApplicationBuilder().token(self.config.tg_bot_token).build()
@@ -150,14 +144,31 @@ class TeleGhostBridge:
         # Start health endpoint
         await self.health.start()
 
-        logger.info("TeleGhost bridge active — listening on Telegram and Mattermost")
+        # Derive WebSocket URL from MM URL (http→ws, https→wss)
+        ws_url = self.config.mm_url.replace("https://", "wss://").replace("http://", "ws://")
 
-        # Start MM polling loop
+        # Use user's personal token for WS (bot tokens get rejected on WS connect)
+        ws_token = self.config.users[0].mm_token if self.config.users else self.config.mm_bot_token
+
+        # Start WebSocket listener (replaces polling)
+        self._ws = MattermostWebSocket(
+            ws_url=ws_url,
+            token=ws_token,
+            on_post=self._handle_ws_post,
+        )
+        await self._ws.start()
+
+        logger.info("TeleGhost bridge active — WebSocket + Telegram listening")
+
+        # Keep running until interrupted
         self._running = True
         try:
-            await self._mm_poll_loop()
+            while self._running:
+                await asyncio.sleep(1)
         finally:
             self._running = False
+            if self._ws:
+                await self._ws.stop()
             await self.health.stop()
             await app.updater.stop()
             await app.stop()
@@ -324,6 +335,75 @@ class TeleGhostBridge:
             if post_id:
                 self._our_post_ids.append(post_id)
 
+    async def _handle_ws_post(self, post: dict):
+        """Handle a new post event from Mattermost WebSocket."""
+        channel_id = post.get("channel_id", "")
+        post_id = post.get("id", "")
+        user_id = post.get("user_id", "")
+
+        # Only process posts in tracked DM channels
+        if channel_id not in self._dm_to_user:
+            return
+
+        # Skip our own posts (echo prevention)
+        if post_id in self._our_post_ids:
+            return
+
+        user, bot = self._dm_to_user[channel_id]
+
+        # Skip posts from the mapped user (their own messages)
+        if user_id == user.mm_user_id:
+            return
+
+        # This is a bot response — relay to Telegram
+        text = post.get("message", "")
+
+        # Add bot prefix if not the active bot (multi-bot clarity)
+        if text and len(user.bots) > 1 and bot.name != user.active_bot:
+            text = f"[{bot.name}] {text}"
+
+        if text:
+            logger.info("WS→TG [%s←%s]: %s", user.telegram_name, bot.name, text[:80])
+            self.health.record_mm_to_tg()
+
+            chunks = split_message(text)
+            for chunk in chunks:
+                try:
+                    tg_text = mm_to_telegram(chunk)
+                    try:
+                        await self._tg_bot.send_message(
+                            chat_id=user.telegram_id,
+                            text=tg_text,
+                            parse_mode="MarkdownV2",
+                        )
+                    except Exception:
+                        await self._tg_bot.send_message(
+                            chat_id=user.telegram_id,
+                            text=chunk,
+                            parse_mode=None,
+                        )
+                except Exception as e:
+                    logger.error("TG send error: %s", e)
+
+        # Handle file attachments
+        file_ids_list = post.get("file_ids") or []
+        for fid in file_ids_list:
+            try:
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
+                    dl_path = await self.mm.download_file(
+                        self.config.mm_bot_token, fid, tmp.name
+                    )
+                    if dl_path:
+                        with open(dl_path, "rb") as doc:
+                            await self._tg_bot.send_document(
+                                chat_id=user.telegram_id,
+                                document=doc,
+                            )
+                    Path(tmp.name).unlink(missing_ok=True)
+            except Exception as e:
+                logger.error("TG file send error: %s", e)
+
     async def _retry_mm_post(
         self, user: UserMapping, channel_id: str, text: str,
         file_ids: list[str] | None, max_retries: int = 3
@@ -364,100 +444,4 @@ class TeleGhostBridge:
 
         return last_error
 
-    async def _mm_poll_loop(self):
-        """Poll Mattermost for new responses and relay to Telegram."""
-        # FIX #5: Track consecutive errors for backoff
-        consecutive_errors = 0
-
-        while self._running:
-            had_error = False
-
-            for user in self.config.users:
-                for bot in user.bots:
-                    if not bot.mm_dm_channel:
-                        continue
-
-                    last_id = self._last_post_ids.get(bot.mm_dm_channel, "")
-                    try:
-                        posts = await self.mm.get_posts_after(
-                            self.config.mm_bot_token, bot.mm_dm_channel, last_id
-                        )
-                    except Exception as e:
-                        logger.error("MM poll error (%s): %s", bot.name, e)
-                        self.health.record_error()
-                        had_error = True
-                        continue
-
-                    for post in posts:
-                        post_id = post["id"]
-                        self._last_post_ids[bot.mm_dm_channel] = post_id
-
-                        # Skip our own posts (echo prevention)
-                        if post_id in self._our_post_ids:
-                            continue
-
-                        # Skip posts from the mapped user
-                        if post["user_id"] == user.mm_user_id:
-                            continue
-
-                        # This is a response — relay to Telegram
-                        text = post.get("message", "")
-
-                        # Add bot prefix if not the active bot (multi-bot clarity)
-                        if text and len(user.bots) > 1 and bot.name != user.active_bot:
-                            text = f"[{bot.name}] {text}"
-
-                        if text:
-                            logger.info(
-                                "MM→TG [%s←%s]: %s", user.telegram_name, bot.name, text[:80]
-                            )
-                            self.health.record_mm_to_tg()
-                            # Split long messages + convert Markdown
-                            chunks = split_message(text)
-                            for chunk in chunks:
-                                try:
-                                    tg_text = mm_to_telegram(chunk)
-                                    try:
-                                        await self._tg_bot.send_message(
-                                            chat_id=user.telegram_id,
-                                            text=tg_text,
-                                            parse_mode="MarkdownV2",
-                                        )
-                                    except Exception:
-                                        await self._tg_bot.send_message(
-                                            chat_id=user.telegram_id,
-                                            text=chunk,
-                                            parse_mode=None,
-                                        )
-                                except Exception as e:
-                                    logger.error("TG send error: %s", e)
-
-                        # Handle file attachments
-                        file_ids_list = post.get("file_ids", [])
-                        for fid in file_ids_list:
-                            try:
-                                with tempfile.NamedTemporaryFile(
-                                    suffix=".bin", delete=False
-                                ) as tmp:
-                                    dl_path = await self.mm.download_file(
-                                        self.config.mm_bot_token, fid, tmp.name
-                                    )
-                                    if dl_path:
-                                        with open(dl_path, "rb") as doc:
-                                            await self._tg_bot.send_document(
-                                                chat_id=user.telegram_id,
-                                                document=doc,
-                                            )
-                                    Path(tmp.name).unlink(missing_ok=True)
-                            except Exception as e:
-                                logger.error("TG file send error: %s", e)
-
-            # FIX #5: Exponential backoff on consecutive errors
-            if had_error:
-                consecutive_errors += 1
-                backoff = min(self.config.mm_poll_interval * (2 ** consecutive_errors), 60.0)
-                logger.warning("Poll backoff: %.1fs (consecutive errors: %d)", backoff, consecutive_errors)
-                await asyncio.sleep(backoff)
-            else:
-                consecutive_errors = 0
-                await asyncio.sleep(self.config.mm_poll_interval)
+    # Legacy polling loop removed in v0.1.0 — replaced by WebSocket
