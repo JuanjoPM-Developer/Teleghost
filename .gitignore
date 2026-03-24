@@ -24,3 +24,6 @@ config.yaml
 # OS
 .DS_Store
 Thumbs.db
+messages.db
+messages.db-shm
+messages.db-wal
