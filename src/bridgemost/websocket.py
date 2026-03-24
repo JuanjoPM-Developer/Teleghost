@@ -7,7 +7,7 @@ from typing import Callable, Awaitable
 
 import aiohttp
 
-logger = logging.getLogger("teleghost.ws")
+logger = logging.getLogger("bridgemost.ws")
 
 # Mattermost WS event types we care about
 EVENT_POSTED = "posted"

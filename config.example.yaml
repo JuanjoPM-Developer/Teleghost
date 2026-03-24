@@ -1,4 +1,4 @@
-# TeleGhost Configuration
+# BridgeMost Configuration
 # Copy this file to config.yaml and fill in your values
 
 telegram:
@@ -24,7 +24,7 @@ users:
 
 logging:
   level: "INFO"
-  file: "/var/log/teleghost.log"        # Or "" for stdout only
+  file: "/var/log/bridgemost.log"        # Or "" for stdout only
 
 polling:
   telegram_timeout: 30

@@ -1,4 +1,4 @@
-"""TeleGhost entry point."""
+"""BridgeMost entry point."""
 
 import asyncio
 import logging
@@ -6,7 +6,7 @@ import signal
 import sys
 
 from .config import load_config
-from .bridge import TeleGhostBridge
+from .bridge import BridgeMostBridge
 
 
 def setup_logging(level: str, log_file: str = ""):
@@ -25,7 +25,7 @@ def setup_logging(level: str, log_file: str = ""):
 
 def main():
     """Main entry point."""
-    # Handle `teleghost setup` command
+    # Handle `bridgemost setup` command
     if len(sys.argv) > 1 and sys.argv[1] == "setup":
         from .setup import main as setup_main
         setup_main()
@@ -37,16 +37,16 @@ def main():
         config = load_config(config_path)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
-        print("Tip: Run 'python -m teleghost setup' to create config.yaml interactively.")
+        print("Tip: Run 'python -m bridgemost setup' to create config.yaml interactively.")
         sys.exit(1)
 
     setup_logging(config.log_level, config.log_file)
-    logger = logging.getLogger("teleghost")
+    logger = logging.getLogger("bridgemost")
 
-    logger.info("TeleGhost v0.6.0 — Transparent Telegram ↔ Mattermost Bridge")
+    logger.info("BridgeMost v0.6.0 — Transparent Telegram ↔ Mattermost Bridge")
     logger.info("Users mapped: %d", len(config.users))
 
-    bridge = TeleGhostBridge(config)
+    bridge = BridgeMostBridge(config)
 
     # Graceful shutdown
     loop = asyncio.new_event_loop()
@@ -64,7 +64,7 @@ def main():
         logger.info("Interrupted, shutting down...")
     finally:
         loop.close()
-        logger.info("TeleGhost stopped.")
+        logger.info("BridgeMost stopped.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,17 @@
+[Unit]
+Description=BridgeMost — Telegram ↔ Mattermost transparent bridge
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/bridgemost
+ExecStart=/path/to/bridgemost/.venv/bin/python3 -m bridgemost
+Environment=PYTHONPATH=/path/to/bridgemost/src
+Environment=BRIDGEMOST_CONFIG=/path/to/bridgemost/config.yaml
+Restart=always
+RestartSec=5
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

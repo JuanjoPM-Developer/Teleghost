@@ -7,7 +7,7 @@ special characters and has slightly different syntax.
 import re
 import logging
 
-logger = logging.getLogger("teleghost.markdown")
+logger = logging.getLogger("bridgemost.markdown")
 
 # Markers for preserving formatting across escaping
 _BOLD = "\x02B\x03"

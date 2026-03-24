@@ -1,10 +1,10 @@
-"""Mattermost API client for TeleGhost."""
+"""Mattermost API client for BridgeMost."""
 
 import logging
 import aiohttp
 from pathlib import Path
 
-logger = logging.getLogger("teleghost.mm")
+logger = logging.getLogger("bridgemost.mm")
 
 
 class MattermostClient:

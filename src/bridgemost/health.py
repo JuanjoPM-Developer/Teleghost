@@ -1,11 +1,11 @@
-"""Health check HTTP endpoint for TeleGhost monitoring."""
+"""Health check HTTP endpoint for BridgeMost monitoring."""
 
 import asyncio
 import logging
 import time
 from aiohttp import web
 
-logger = logging.getLogger("teleghost.health")
+logger = logging.getLogger("bridgemost.health")
 
 
 class HealthServer:

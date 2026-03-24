@@ -5,7 +5,7 @@ from pathlib import Path
 
 import aiohttp
 
-logger = logging.getLogger("teleghost.whisper")
+logger = logging.getLogger("bridgemost.whisper")
 
 
 class WhisperClient:

@@ -1,10 +1,10 @@
-# TeleGhost 👻
+# BridgeMost 👻
 
 **Telegram ↔ Mattermost Transparent Bridge**
 
-TeleGhost makes your Telegram messages appear natively in Mattermost — as your real user, with your avatar and name. Bot responses from Mattermost are relayed back to Telegram instantly.
+BridgeMost makes your Telegram messages appear natively in Mattermost — as your real user, with your avatar and name. Bot responses from Mattermost are relayed back to Telegram instantly.
 
-Unlike Matterbridge, webhooks, or n8n integrations that post with prefixes like `[User]` or from a bot account, TeleGhost posts as **your actual Mattermost user** via Personal Access Token. Nobody in Mattermost can tell you're writing from Telegram.
+Unlike Matterbridge, webhooks, or n8n integrations that post with prefixes like `[User]` or from a bot account, BridgeMost posts as **your actual Mattermost user** via Personal Access Token. Nobody in Mattermost can tell you're writing from Telegram.
 
 ## ✨ Features
 
@@ -35,8 +35,8 @@ Unlike Matterbridge, webhooks, or n8n integrations that post with prefixes like 
 ### Installation
 
 ```bash
-git clone https://github.com/JuanjoPM-Developer/Teleghost.git
-cd Teleghost
+git clone https://github.com/JuanjoPM-Developer/BridgeMost.git
+cd BridgeMost
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -45,7 +45,7 @@ pip install -e .
 ### Configuration (Automatic — Recommended)
 
 ```bash
-python3 -m teleghost setup
+python3 -m bridgemost setup
 ```
 
 The interactive wizard will:
@@ -66,15 +66,15 @@ cp config.example.yaml config.yaml
 ### Run
 
 ```bash
-python3 -m teleghost
+python3 -m bridgemost
 ```
 
 ### Systemd Service (recommended)
 
 ```bash
-sudo cp teleghost.service.example /etc/systemd/system/teleghost.service
+sudo cp bridgemost.service.example /etc/systemd/system/bridgemost.service
 # Edit paths in the service file
-sudo systemctl enable --now teleghost
+sudo systemctl enable --now bridgemost
 ```
 
 ## ⚙️ Configuration
@@ -130,7 +130,7 @@ logging:
 
 ### DM Channel Auto-Discovery
 
-You can leave `mm_dm_channel` empty for each bot — TeleGhost will automatically discover the DM channel at startup. If discovery fails (e.g., you've never DM'd that bot), TeleGhost retries 3 times with exponential backoff before giving up on that bot.
+You can leave `mm_dm_channel` empty for each bot — BridgeMost will automatically discover the DM channel at startup. If discovery fails (e.g., you've never DM'd that bot), BridgeMost retries 3 times with exponential backoff before giving up on that bot.
 
 ## 🤖 Multi-Bot Routing
 
@@ -146,7 +146,7 @@ Messages from the active bot go directly to your Telegram chat. Messages from no
 
 ## 🎤 Voice-to-Text
 
-When `voice_to_text.enabled` is `true`, TeleGhost sends voice messages to a Whisper-compatible API for transcription. The transcribed text is posted to Mattermost as:
+When `voice_to_text.enabled` is `true`, BridgeMost sends voice messages to a Whisper-compatible API for transcription. The transcribed text is posted to Mattermost as:
 
 > 🎤 Hello, this is what I said in the voice message
 
@@ -160,7 +160,7 @@ Compatible APIs: [OpenAI Whisper](https://github.com/openai/whisper), [faster-wh
 - **Bot edits** a response in Mattermost → edit updates in your Telegram chat
 - **Bot deletes** a response in Mattermost → message deleted in your Telegram chat
 
-TeleGhost maintains a bidirectional message ID map (last 2000 messages) for sync.
+BridgeMost maintains a bidirectional message ID map (last 2000 messages) for sync.
 
 ## 😀 Reactions
 
@@ -198,18 +198,18 @@ curl http://localhost:9191/health
 
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
-│ Telegram │◄───────►│  TeleGhost   │◄───────►│  Mattermost  │
+│ Telegram │◄───────►│  BridgeMost   │◄───────►│  Mattermost  │
 │  (User)  │  Bot    │  (Bridge)    │  WS +   │  (Bot + User)│
 └──────────┘  API    └──────────────┘  REST   └──────────────┘
 ```
 
-1. **TG → MM**: User sends message via Telegram → TeleGhost posts to MM as user's real account (PAT)
-2. **MM → TG**: Bot responds in MM → WebSocket delivers event instantly → TeleGhost relays to Telegram
+1. **TG → MM**: User sends message via Telegram → BridgeMost posts to MM as user's real account (PAT)
+2. **MM → TG**: Bot responds in MM → WebSocket delivers event instantly → BridgeMost relays to Telegram
 3. **Startup**: Validates tokens → discovers DM channels with retry → opens WebSocket → starts Telegram polling
 
 ## 🛡️ Startup Resilience (v0.5.0)
 
-TeleGhost validates everything before accepting messages:
+BridgeMost validates everything before accepting messages:
 
 1. **Token pre-validation** — all user PATs are tested against MM API at boot. Fails immediately with clear error if invalid.
 2. **DM discovery retry** — 3 attempts with exponential backoff (2s → 4s → 8s) per bot channel.
@@ -220,7 +220,7 @@ TeleGhost validates everything before accepting messages:
 
 | Version | Feature |
 |---------|---------|
-| v0.6.0 | Interactive setup wizard (`teleghost setup`) |
+| v0.6.0 | Interactive setup wizard (`bridgemost setup`) |
 | v0.5.0 | Startup resilience — token validation, DM retry, zero-channel abort |
 | v0.4.0 | Voice-to-text transcription via Whisper API |
 | v0.3.1 | Synthetic typing indicator |

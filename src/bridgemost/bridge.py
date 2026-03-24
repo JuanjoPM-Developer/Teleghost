@@ -24,7 +24,7 @@ from .mattermost import MattermostClient
 from .websocket import MattermostWebSocket
 from .whisper import WhisperClient
 
-logger = logging.getLogger("teleghost.bridge")
+logger = logging.getLogger("bridgemost.bridge")
 
 # Telegram message length limit
 TG_MAX_LENGTH = 4096
@@ -70,7 +70,7 @@ def split_message(text: str, max_len: int = TG_MAX_LENGTH) -> list[str]:
     return chunks
 
 
-class TeleGhostBridge:
+class BridgeMostBridge:
     """Main bridge between Telegram and Mattermost."""
 
     def __init__(self, config: Config):
@@ -104,7 +104,7 @@ class TeleGhostBridge:
 
     async def start(self):
         """Start the bridge."""
-        logger.info("TeleGhost v0.6.0 starting (WebSocket + multi-bot + setup wizard)...")
+        logger.info("BridgeMost v0.6.0 starting (WebSocket + multi-bot + setup wizard)...")
 
         # Phase 1: Pre-validate all user tokens before anything else
         for user in self.config.users:
@@ -249,7 +249,7 @@ class TeleGhostBridge:
         )
         await self._ws.start()
 
-        logger.info("TeleGhost bridge active — WebSocket + Telegram listening")
+        logger.info("BridgeMost bridge active — WebSocket + Telegram listening")
 
         # Keep running until interrupted
         self._running = True

@@ -1,4 +1,4 @@
-"""Configuration loader for TeleGhost."""
+"""Configuration loader for BridgeMost."""
 
 import os
 import yaml
@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger("teleghost")
+logger = logging.getLogger("bridgemost")
 
 
 @dataclass
@@ -33,7 +33,7 @@ class UserMapping:
 
 @dataclass
 class Config:
-    """TeleGhost configuration."""
+    """BridgeMost configuration."""
     # Telegram
     tg_bot_token: str = ""
 
@@ -83,17 +83,17 @@ def load_config(path: str | Path | None = None) -> Config:
 
     Search order:
     1. Explicit path argument
-    2. TELEGHOST_CONFIG env var
+    2. BRIDGEMOST_CONFIG env var
     3. ./config.yaml
-    4. /etc/teleghost/config.yaml
+    4. /etc/bridgemost/config.yaml
     """
     candidates = []
     if path:
         candidates.append(Path(path))
-    if env := os.environ.get("TELEGHOST_CONFIG"):
+    if env := os.environ.get("BRIDGEMOST_CONFIG"):
         candidates.append(Path(env))
     candidates.append(Path("config.yaml"))
-    candidates.append(Path("/etc/teleghost/config.yaml"))
+    candidates.append(Path("/etc/bridgemost/config.yaml"))
 
     config_path = None
     for c in candidates:
