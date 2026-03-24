@@ -32,3 +32,14 @@ polling:
 
 health:
   port: 9191
+
+# Voice-to-text transcription (optional)
+# Transcribes voice messages before posting to Mattermost
+# Supports any OpenAI-compatible Whisper API
+voice_to_text:
+  # enabled: false                      # Omit this section to disable
+  url: "http://localhost:9000"          # Whisper API endpoint
+  api_key: ""                           # Required for OpenAI/Groq, empty for local
+  model: "large-v3"                     # large-v3 (local), whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)
+  language: ""                          # ISO 639-1 (es, en) or empty for auto-detect
+  keep_audio: true                      # Also send original audio file alongside text

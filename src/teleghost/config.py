@@ -56,6 +56,13 @@ class Config:
     # Health
     health_port: int = 9191
 
+    # Voice-to-text (Whisper)
+    whisper_url: str = ""          # e.g. http://localhost:9000
+    whisper_api_key: str = ""      # Required for OpenAI/Groq, empty for local
+    whisper_model: str = "large-v3"  # Model name (large-v3, whisper-1, etc.)
+    whisper_language: str = ""     # ISO 639-1 code (es, en) or empty for auto
+    whisper_keep_audio: bool = True  # Also send original audio alongside text
+
     def get_user_by_tg_id(self, tg_id: int) -> UserMapping | None:
         """Find user mapping by Telegram ID."""
         for u in self.users:
@@ -168,6 +175,14 @@ def load_config(path: str | Path | None = None) -> Config:
 
     # Health
     health = raw.get("health", {})
-    cfg.health_port = health.get("port", 9090)
+    cfg.health_port = health.get("port", 9191)
+
+    # Voice-to-text
+    vtt = raw.get("voice_to_text", {})
+    cfg.whisper_url = vtt.get("url", "")
+    cfg.whisper_api_key = vtt.get("api_key", "")
+    cfg.whisper_model = vtt.get("model", "large-v3")
+    cfg.whisper_language = vtt.get("language", "")
+    cfg.whisper_keep_audio = vtt.get("keep_audio", True)
 
     return cfg

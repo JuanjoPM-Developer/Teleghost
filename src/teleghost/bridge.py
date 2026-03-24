@@ -22,6 +22,7 @@ from .health import HealthServer
 from .markdown import mm_to_telegram
 from .mattermost import MattermostClient
 from .websocket import MattermostWebSocket
+from .whisper import WhisperClient
 
 logger = logging.getLogger("teleghost.bridge")
 
@@ -90,6 +91,16 @@ class TeleGhostBridge:
         self._typing_tasks: dict[int, asyncio.Task] = {}  # tg_user_id → typing task
         # Health server
         self.health = HealthServer(port=config.health_port)
+        # Voice-to-text
+        self.whisper: WhisperClient | None = None
+        if config.whisper_url:
+            self.whisper = WhisperClient(
+                url=config.whisper_url,
+                api_key=config.whisper_api_key,
+                model=config.whisper_model,
+                language=config.whisper_language,
+            )
+            logger.info("Voice-to-text enabled: %s (model=%s)", config.whisper_url, config.whisper_model)
 
     async def start(self):
         """Start the bridge."""
@@ -364,12 +375,27 @@ class TeleGhostBridge:
                 )
                 await tg_file.download_to_drive(local_file.name)
                 fname = getattr(audio, "file_name", None) or f"audio{suffix}"
-                fid = await self.mm.upload_file(
-                    user.mm_token, dm_channel,
-                    local_file.name, fname
-                )
-                if fid:
-                    file_ids.append(fid)
+
+                # Voice-to-text: transcribe if Whisper is configured
+                if self.whisper and msg.voice:
+                    transcript = await self.whisper.transcribe(local_file.name)
+                    if transcript:
+                        # Prepend transcription to message text
+                        voice_text = f"🎤 {transcript}"
+                        text = f"{voice_text}\n{text}" if text else voice_text
+                        logger.info("Voice transcribed: %s", transcript[:80])
+
+                # Upload audio file (always if keep_audio, or if no transcript)
+                if self.config.whisper_keep_audio or not self.whisper or not msg.voice:
+                    fid = await self.mm.upload_file(
+                        user.mm_token, dm_channel,
+                        local_file.name, fname
+                    )
+                    if fid:
+                        file_ids.append(fid)
+                elif self.whisper and msg.voice and not self.config.whisper_keep_audio:
+                    # Whisper active + keep_audio=false: skip audio upload
+                    pass
 
             elif msg.video or msg.video_note:
                 video = msg.video or msg.video_note
