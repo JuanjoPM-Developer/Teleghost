@@ -587,6 +587,7 @@ class BridgeMostBridge:
 
         file_ids = []
         voice_prefix = ""  # Set by Whisper transcription if voice message
+        text = msg.text or msg.caption or ""
 
         # Handle media (photo, document, audio, video, voice, sticker)
         local_file = None
@@ -686,19 +687,9 @@ class BridgeMostBridge:
                         text = emoji_hint
                     logger.warning("Sticker download failed: %s", e)
 
-            elif msg.location:
-                # Convert location to text with map link
-                lat = msg.location.latitude
-                lon = msg.location.longitude
-                map_url = f"https://www.google.com/maps?q={lat},{lon}"
-                loc_text = f"📍 Ubicación: [{lat}, {lon}]({map_url})"
-                if not text:
-                    text = loc_text
-                else:
-                    text = f"{text}\n{loc_text}"
-
             elif msg.venue:
-                # Venue = location + name/address
+                # Venue = location + name/address (MUST be before msg.location
+                # because Telegram sets both attributes on venue messages)
                 lat = msg.venue.location.latitude
                 lon = msg.venue.location.longitude
                 map_url = f"https://www.google.com/maps?q={lat},{lon}"
@@ -713,16 +704,30 @@ class BridgeMostBridge:
                 else:
                     text = f"{text}\n{loc_text}"
 
+            elif msg.location:
+                # Pure location (no venue name)
+                lat = msg.location.latitude
+                lon = msg.location.longitude
+                map_url = f"https://www.google.com/maps?q={lat},{lon}"
+                loc_text = f"📍 Ubicación: [{lat}, {lon}]({map_url})"
+                if not text:
+                    text = loc_text
+                else:
+                    text = f"{text}\n{loc_text}"
+
             elif msg.poll:
                 # Convert TG poll to formatted text in MM
                 poll = msg.poll
                 poll_text = f"📊 **{poll.question}**\n"
                 for i, opt in enumerate(poll.options):
                     poll_text += f"  {i+1}. {opt.text}\n"
+                meta = []
                 if poll.is_anonymous:
-                    poll_text += "_Encuesta anónima_"
+                    meta.append("Anónima")
                 if poll.allows_multiple_answers:
-                    poll_text += " · _Múltiple respuesta_"
+                    meta.append("Múltiple respuesta")
+                if meta:
+                    poll_text += f"_{' · '.join(meta)}_"
                 if not text:
                     text = poll_text
                 else:
@@ -744,8 +749,9 @@ class BridgeMostBridge:
                 except Exception:
                     pass
 
-        # Build message text
-        text = msg.text or msg.caption or ""
+        # Build message text — only override if nothing was set by media handlers above
+        if not text:
+            text = msg.text or msg.caption or ""
         if voice_prefix:
             text = f"{voice_prefix}\n{text}" if text else voice_prefix
 
