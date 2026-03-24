@@ -1,6 +1,6 @@
 [project]
 name = "bridgemost"
-version = "0.9.0"
+version = "0.9.1"
 description = "Telegram ↔ Mattermost transparent bridge. Messages appear native."
 readme = "README.md"
 license = {text = "MIT"}

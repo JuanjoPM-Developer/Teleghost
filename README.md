@@ -23,7 +23,11 @@ Unlike Matterbridge or webhooks that post with `[User]` prefixes, BridgeMost pos
 | 💾 Persistent mapping | SQLite store for message IDs (survives restarts) |
 | 🩺 Health endpoint | HTTP `/health` on configurable port |
 
+| 👥 Multi-user | Multiple Telegram users, each with their own MM identity |
+
 ~55 MB RAM · ~250 ms latency · asyncio-based · Python 3.11+
+
+> **Multi-user ready:** Multiple people can use the same BridgeMost instance — each with their own Telegram account, Mattermost identity, and bot routing. Add users to `config.yaml` and they appear as themselves in Mattermost. No shared accounts, no impersonation.
 
 ---
 
@@ -219,7 +223,7 @@ curl http://localhost:9191/health
 ```json
 {
   "status": "ok",
-  "version": "0.8.3",
+  "version": "0.9.1",
   "transport": "websocket",
   "uptime": "2h15m30s",
   "messages": { "tg_to_mm": 42, "mm_to_tg": 38, "errors": 0 },
@@ -274,6 +278,8 @@ curl http://localhost:9191/health
 
 | Version | Date | Feature |
 |---------|------|---------|
+| v0.9.1 | 2026-03-25 | Multi-user highlighted in README, unit tests added |
+| v0.9.0 | 2026-03-24 | README rewrite, improved config.example.yaml with inline docs |
 | v0.8.3 | 2026-03-24 | Code audit cleanup (dead code, unused imports, version alignment) |
 | v0.8.2 | 2026-03-24 | Remove `/ping` (ghost typing fix), typing timeout 300→60s |
 | v0.8.1 | 2026-03-24 | `/bots` and `/status` Telegram commands |
