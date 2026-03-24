@@ -1,49 +1,99 @@
-# BridgeMost Configuration
-# Copy this file to config.yaml and fill in your values
+# ╔══════════════════════════════════════════════╗
+# ║         BridgeMost Configuration             ║
+# ║  Copy to config.yaml and fill in your values ║
+# ╚══════════════════════════════════════════════╝
+#
+# QUICKSTART: Run `python3 -m bridgemost setup` for an interactive wizard
+# that generates this file automatically.
 
+# ─── Telegram ──────────────────────────────────
 telegram:
-  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"  # From @BotFather
+  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
+  # Create a bot via @BotFather → /newbot → copy the token
 
+# ─── Mattermost ────────────────────────────────
 mattermost:
-  url: "http://127.0.0.1:8065"         # Your MM server URL
-  bot_token: "YOUR_MM_BOT_TOKEN"        # Any bot token (for reading responses)
-  bot_user_id: "YOUR_MM_BOT_USER_ID"    # User ID of the bot above
+  url: "http://localhost:8065"
+  # The URL of your Mattermost server (same URL you open in browser)
+  # Use http:// for local, https:// if behind reverse proxy/tunnel
 
+  bot_token: "YOUR_MM_BOT_TOKEN"
+  # A token from any bot on your MM server
+  # Find it: Integrations → Bot Accounts → pick a bot → copy token
+  # Used for: WebSocket connection to receive real-time events
+
+  bot_user_id: "YOUR_MM_BOT_USER_ID"
+  # The Mattermost user ID (26-char alphanumeric) of the bot above
+  # Find it: mmctl user search <botname>
+  # Or: curl http://YOUR_MM/api/v4/users/username/<botname> -H "Authorization: Bearer TOKEN"
+
+# ─── Users ─────────────────────────────────────
 users:
-  - telegram_id: 123456789              # Your Telegram user ID (from @userinfobot)
+  - telegram_id: 123456789
+    # Your numeric Telegram user ID
+    # Find it: send any message to @userinfobot on Telegram
+
     telegram_name: "Your Name"
-    mm_user_id: "your_mm_user_id"       # Mattermost user ID
-    mm_token: "YOUR_MM_PAT"             # Personal Access Token
+    # Display name (used in logs only, not shown anywhere)
+
+    mm_user_id: "your_mm_user_id"
+    # Your Mattermost user ID (26-char alphanumeric)
+    # Find it: mmctl user search <your_username>
+    # Or: curl http://YOUR_MM/api/v4/users/username/<you> -H "Authorization: Bearer TOKEN"
+
+    mm_token: "YOUR_PERSONAL_ACCESS_TOKEN"
+    # Your Personal Access Token (PAT)
+    # Create: MM → click your avatar → Profile → Security → Personal Access Tokens → Create
+    # IMPORTANT: EnableUserAccessTokens must be enabled in System Console
+
     bots:
       - name: "MyBot"
-        mm_bot_id: "bot_user_id"        # MM user ID of the bot
-        mm_dm_channel: ""               # Leave empty for auto-discovery
+        # Friendly name — used with /bot command in Telegram to switch bots
+
+        mm_bot_id: "bot_user_id_here"
+        # The Mattermost user ID of this bot (26-char alphanumeric)
+
+        mm_dm_channel: ""
+        # Leave EMPTY — BridgeMost auto-discovers it at startup
+        # Only fill in manually if auto-discovery fails (check logs)
+
         default: true
-      - name: "AnotherBot"
-        mm_bot_id: "another_bot_user_id"
+        # Set to true for the bot you want to talk to by default
 
-logging:
-  level: "INFO"
-  file: "/var/log/bridgemost.log"        # Or "" for stdout only
+      # Add more bots:
+      # - name: "AnotherBot"
+      #   mm_bot_id: "another_bot_user_id"
+      #   mm_dm_channel: ""
+      #   default: false
 
-polling:
-  telegram_timeout: 30
-  mm_poll_interval: 0.5                 # Seconds between MM polls
-
+# ─── Health Check (optional) ───────────────────
 health:
   port: 9191
+  # HTTP endpoint at /health for monitoring
+  # Binds to 127.0.0.1 only (not exposed externally)
 
-# Data persistence
+# ─── Logging (optional) ────────────────────────
+logging:
+  level: "INFO"
+  # Options: DEBUG, INFO, WARNING, ERROR
+
+  file: ""
+  # Path to log file. Empty = stdout only (recommended with systemd)
+
+# ─── Data Persistence (optional) ───────────────
 storage:
-  data_dir: ""                          # Directory for SQLite DB; empty = working directory
+  data_dir: ""
+  # Directory for SQLite database (message ID mappings)
+  # Empty = current working directory
+  # Message mappings persist across restarts (30-day TTL, auto-pruned)
 
-# Voice-to-text transcription (optional)
+# ─── Voice-to-Text (optional) ──────────────────
 # Transcribes voice messages before posting to Mattermost
-# Supports any OpenAI-compatible Whisper API
-voice_to_text:
-  # enabled: false                      # Omit this section to disable
-  url: "http://localhost:9000"          # Whisper API endpoint
-  api_key: ""                           # Required for OpenAI/Groq, empty for local
-  model: "large-v3"                     # large-v3 (local), whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)
-  language: ""                          # ISO 639-1 (es, en) or empty for auto-detect
-  keep_audio: true                      # Also send original audio file alongside text
+# Requires a Whisper-compatible API (OpenAI, Groq, local faster-whisper)
+#
+# voice_to_text:
+#   url: "http://localhost:9000"        # Whisper API endpoint
+#   api_key: ""                         # Required for OpenAI/Groq; empty for local
+#   model: "large-v3"                   # large-v3 (local), whisper-1 (OpenAI)
+#   language: ""                        # "es", "en", or "" for auto-detect
+#   keep_audio: true                    # Also attach original audio file in MM
