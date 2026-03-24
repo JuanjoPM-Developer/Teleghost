@@ -104,25 +104,62 @@ class TeleGhostBridge:
 
     async def start(self):
         """Start the bridge."""
-        logger.info("TeleGhost v0.3.1 starting (WebSocket + multi-bot + synthetic typing)...")
+        logger.info("TeleGhost v0.5.0 starting (WebSocket + multi-bot + startup resilience)...")
 
-        # Auto-discover DM channels for all bot routes
+        # Phase 1: Pre-validate all user tokens before anything else
+        for user in self.config.users:
+            logger.info("Validating token for %s...", user.telegram_name)
+            user_info = await self.mm.validate_token(user.mm_token)
+            if not user_info:
+                logger.critical(
+                    "FATAL: Token validation FAILED for %s — check mm_token in config",
+                    user.telegram_name,
+                )
+                raise SystemExit(1)
+            logger.info(
+                "Token OK for %s (MM user: %s)",
+                user.telegram_name, user_info.get("username", "?"),
+            )
+
+        # Phase 2: Auto-discover DM channels with retry
+        max_retries = 3
+        retry_delay = 2.0
+
         for user in self.config.users:
             for bot in user.bots:
-                if not bot.mm_dm_channel:
-                    channel = await self.mm.get_dm_channel(
-                        user.mm_token, user.mm_user_id, bot.mm_bot_id
-                    )
-                    if channel:
-                        bot.mm_dm_channel = channel
-                        logger.info(
-                            "Auto-discovered DM for %s→%s: %s",
-                            user.telegram_name, bot.name, channel
-                        )
-                    else:
+                if bot.mm_dm_channel:
+                    # Pre-configured — validate format
+                    if len(bot.mm_dm_channel) != 26 or not bot.mm_dm_channel.isalnum():
                         logger.error(
-                            "Could not discover DM for %s→%s",
-                            user.telegram_name, bot.name
+                            "Invalid pre-configured DM channel for %s→%s: %r — will re-discover",
+                            user.telegram_name, bot.name, bot.mm_dm_channel,
+                        )
+                        bot.mm_dm_channel = ""
+
+                if not bot.mm_dm_channel:
+                    # Discover with retry
+                    for attempt in range(1, max_retries + 1):
+                        channel = await self.mm.get_dm_channel(
+                            user.mm_token, user.mm_user_id, bot.mm_bot_id
+                        )
+                        if channel:
+                            bot.mm_dm_channel = channel
+                            logger.info(
+                                "DM discovered for %s→%s: %s (attempt %d)",
+                                user.telegram_name, bot.name, channel, attempt,
+                            )
+                            break
+                        logger.warning(
+                            "DM discovery failed for %s→%s (attempt %d/%d), retrying in %.0fs...",
+                            user.telegram_name, bot.name, attempt, max_retries, retry_delay,
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay = min(retry_delay * 2, 10.0)
+
+                    if not bot.mm_dm_channel:
+                        logger.error(
+                            "FAILED to discover DM for %s→%s after %d attempts",
+                            user.telegram_name, bot.name, max_retries,
                         )
 
                 # Build reverse lookup: DM channel → (user, bot)
@@ -136,6 +173,24 @@ class TeleGhostBridge:
                 )
                 if channel:
                     user.mm_dm_channel = channel
+
+        # Phase 3: Abort if zero channels discovered
+        if not self._dm_to_user:
+            logger.critical(
+                "FATAL: Zero DM channels discovered — bridge has nothing to relay. "
+                "Check MM connectivity, tokens, and bot user IDs."
+            )
+            raise SystemExit(1)
+
+        total_bots = sum(len(u.bots) for u in self.config.users)
+        ok_channels = len(self._dm_to_user)
+        if ok_channels < total_bots:
+            logger.warning(
+                "Partial discovery: %d/%d bot channels OK — some bots will be unreachable",
+                ok_channels, total_bots,
+            )
+        else:
+            logger.info("All %d bot channels discovered successfully", ok_channels)
 
         # Build Telegram application
         app = ApplicationBuilder().token(self.config.tg_bot_token).build()

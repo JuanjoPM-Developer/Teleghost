@@ -83,16 +83,54 @@ class MattermostClient:
                 logger.error("MM upload failed (%d): %s", resp.status, data)
                 return None
 
-    async def get_dm_channel(self, token: str, user_id: str, other_id: str) -> str:
-        """Get or create a DM channel between two users."""
+    async def get_dm_channel(self, token: str, user_id: str, other_id: str) -> str | None:
+        """Get or create a DM channel between two users.
+        
+        Returns the 26-char channel ID, or None if the request failed.
+        Validates the response to prevent garbage IDs from propagating.
+        """
         session = await self._get_session()
-        async with session.post(
-            f"{self.base_url}/api/v4/channels/direct",
-            json=[user_id, other_id],
-            headers=self._headers(token),
-        ) as resp:
-            data = await resp.json()
-            return data.get("id", "")
+        try:
+            async with session.post(
+                f"{self.base_url}/api/v4/channels/direct",
+                json=[user_id, other_id],
+                headers=self._headers(token),
+            ) as resp:
+                data = await resp.json()
+                if resp.status not in (200, 201):
+                    logger.error(
+                        "DM channel discovery failed (%d): %s",
+                        resp.status, data.get("message", data),
+                    )
+                    return None
+                channel_id = data.get("id", "")
+                # Mattermost channel IDs are exactly 26 alphanumeric chars
+                if not channel_id or len(channel_id) != 26 or not channel_id.isalnum():
+                    logger.error(
+                        "Invalid channel ID received: %r (status=%d)",
+                        channel_id, resp.status,
+                    )
+                    return None
+                return channel_id
+        except Exception as e:
+            logger.error("DM channel discovery exception: %s", e)
+            return None
+
+    async def validate_token(self, token: str) -> dict | None:
+        """Validate a personal access token. Returns user info or None."""
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{self.base_url}/api/v4/users/me",
+                headers=self._headers(token),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                logger.error("Token validation failed (%d)", resp.status)
+                return None
+        except Exception as e:
+            logger.error("Token validation exception: %s", e)
+            return None
 
     async def get_posts_after(
         self, token: str, channel_id: str, after_id: str
