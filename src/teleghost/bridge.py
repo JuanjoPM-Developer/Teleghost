@@ -91,7 +91,7 @@ class TeleGhostBridge:
 
     async def start(self):
         """Start the bridge."""
-        logger.info("TeleGhost v0.1.0 starting (WebSocket mode)...")
+        logger.info("TeleGhost v0.3.0 starting (WebSocket + multi-bot)...")
 
         # Auto-discover DM channels for all bot routes
         for user in self.config.users:
@@ -249,7 +249,8 @@ class TeleGhostBridge:
             if matched:
                 user.active_bot = matched.name
                 await update.effective_message.reply_text(
-                    f"✅ Bot cambiado a *{matched.name}*", parse_mode="Markdown"
+                    f"── Ahora hablando con *{matched.name}* ──",
+                    parse_mode="Markdown",
                 )
                 logger.info("Bot switched to %s for %s", matched.name, user.telegram_name)
             else:
@@ -392,9 +393,9 @@ class TeleGhostBridge:
         # This is a bot response — relay to Telegram
         text = post.get("message", "")
 
-        # Add bot prefix if not the active bot (multi-bot clarity)
-        if text and len(user.bots) > 1 and bot.name != user.active_bot:
-            text = f"[{bot.name}] {text}"
+        # Always add bot prefix for multi-bot clarity
+        if text and len(user.bots) > 1:
+            text = f"🤖 {bot.name}: {text}"
 
         if text:
             logger.info("WS→TG [%s←%s]: %s", user.telegram_name, bot.name, text[:80])
