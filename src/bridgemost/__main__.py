@@ -60,7 +60,11 @@ def main():
         )
     elif config.adapter == "telegram":
         from .adapters.telegram import TelegramAdapter
-        adapter = TelegramAdapter(config)
+        allowed_ids = [u.telegram_id for u in config.users] if config.users else None
+        adapter = TelegramAdapter(
+            bot_token=config.tg_bot_token,
+            allowed_user_ids=allowed_ids,
+        )
     else:
         logger.critical("Unknown adapter: %s", config.adapter)
         sys.exit(1)
