@@ -824,23 +824,123 @@ class BridgeMostBridge:
                 except Exception as e:
                     logger.error("TG send error: %s", e)
 
-        # Handle file attachments
+        # Handle file attachments — smart dispatch by MIME type
         file_ids_list = post.get("file_ids") or []
         for fid in file_ids_list:
             try:
-                with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
-                    dl_path = await self.mm.download_file(
-                        self.config.mm_bot_token, fid, tmp.name
-                    )
-                    if dl_path:
-                        with open(dl_path, "rb") as doc:
-                            await self._tg_bot.send_document(
-                                chat_id=user.telegram_id,
-                                document=doc,
-                            )
-                    Path(tmp.name).unlink(missing_ok=True)
+                await self._relay_mm_file_to_tg(user, fid)
             except Exception as e:
-                logger.error("TG file send error: %s", e)
+                logger.error("TG file relay error for %s: %s", fid[:8], e)
+
+    async def _relay_mm_file_to_tg(self, user: UserMapping, file_id: str):
+        """Download a file from MM and send to Telegram with proper type dispatch.
+
+        Uses MM file metadata to choose the right Telegram method:
+        - Images (jpg/png/gif/webp) → send_photo (or send_animation for GIF)
+        - Audio (mp3/wav/flac) → send_audio
+        - Voice (ogg opus) → send_voice
+        - Video (mp4/webm/mkv/mov) → send_video
+        - Everything else → send_document
+        """
+        # Get file metadata from MM
+        token = self.config.mm_bot_token
+        file_info = await self.mm.get_file_info(token, file_id)
+
+        if not file_info:
+            logger.warning("Could not get file info for %s, skipping", file_id[:8])
+            return
+
+        filename = file_info.get("name", "file")
+        mime = file_info.get("mime_type", "application/octet-stream")
+        size = file_info.get("size", 0)
+        extension = file_info.get("extension", "").lower()
+
+        # Telegram limits: photos 10MB, files 50MB via bot API
+        TG_PHOTO_MAX = 10 * 1024 * 1024
+        TG_FILE_MAX = 50 * 1024 * 1024
+
+        if size > TG_FILE_MAX:
+            logger.warning(
+                "File %s too large for TG (%d bytes > 50MB), sending link instead",
+                filename, size,
+            )
+            await self._tg_rate_wait()
+            await self._tg_bot.send_message(
+                chat_id=user.telegram_id,
+                text=f"📎 {filename} ({size // (1024*1024)}MB) — demasiado grande para Telegram",
+            )
+            return
+
+        # Download to temp file with correct extension
+        suffix = f".{extension}" if extension else Path(filename).suffix or ".bin"
+        local_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                local_path = tmp.name
+
+            dl_result = await self.mm.download_file(token, file_id, local_path)
+            if not dl_result:
+                logger.error("Download failed for file %s", file_id[:8])
+                return
+
+            await self._tg_rate_wait()
+
+            # Dispatch by MIME type
+            if mime.startswith("image/"):
+                if mime == "image/gif" or extension == "gif":
+                    with open(local_path, "rb") as f:
+                        await self._tg_bot.send_animation(
+                            chat_id=user.telegram_id, animation=f, filename=filename
+                        )
+                elif size <= TG_PHOTO_MAX and extension in ("jpg", "jpeg", "png", "webp"):
+                    with open(local_path, "rb") as f:
+                        await self._tg_bot.send_photo(
+                            chat_id=user.telegram_id, photo=f, filename=filename
+                        )
+                else:
+                    # Large image or unusual format → send as document
+                    with open(local_path, "rb") as f:
+                        await self._tg_bot.send_document(
+                            chat_id=user.telegram_id, document=f, filename=filename
+                        )
+
+            elif mime.startswith("audio/"):
+                # OGG Opus → send as voice note (plays inline in Telegram)
+                if extension == "ogg" or mime == "audio/ogg":
+                    with open(local_path, "rb") as f:
+                        await self._tg_bot.send_voice(
+                            chat_id=user.telegram_id, voice=f, filename=filename
+                        )
+                else:
+                    with open(local_path, "rb") as f:
+                        await self._tg_bot.send_audio(
+                            chat_id=user.telegram_id, audio=f, filename=filename
+                        )
+
+            elif mime.startswith("video/"):
+                with open(local_path, "rb") as f:
+                    await self._tg_bot.send_video(
+                        chat_id=user.telegram_id, video=f, filename=filename
+                    )
+
+            else:
+                # Fallback: send as document (PDFs, ZIPs, text files, etc.)
+                with open(local_path, "rb") as f:
+                    await self._tg_bot.send_document(
+                        chat_id=user.telegram_id, document=f, filename=filename
+                    )
+
+            logger.info(
+                "MM→TG file [%s]: %s (%s, %d bytes)",
+                user.telegram_name, filename, mime, size,
+            )
+
+        finally:
+            if local_path:
+                try:
+                    Path(local_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     async def _handle_telegram_edit(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

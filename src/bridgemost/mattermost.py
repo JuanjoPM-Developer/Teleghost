@@ -227,6 +227,22 @@ class MattermostClient:
             logger.error("MM download failed (%d)", resp.status)
             return ""
 
+    async def get_file_info(self, token: str, file_id: str) -> dict | None:
+        """Get file metadata (name, extension, mime_type, size)."""
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{self.base_url}/api/v4/files/{file_id}/info",
+                headers=self._headers(token),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                logger.error("MM get_file_info failed (%d)", resp.status)
+                return None
+        except Exception as e:
+            logger.error("MM get_file_info exception: %s", e)
+            return None
+
     async def get_user_status(self, token: str, user_id: str) -> dict | None:
         """Get a user's online status (online/away/dnd/offline)."""
         session = await self._get_session()
