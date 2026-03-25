@@ -34,8 +34,17 @@ class UserMapping:
 @dataclass
 class Config:
     """BridgeMost configuration."""
+    # Adapter selection (auto-detected from config sections)
+    adapter: str = ""  # "telegram", "googlechat", etc. Empty = auto-detect
+
     # Telegram
     tg_bot_token: str = ""
+
+    # Google Chat
+    gchat_credentials_file: str = ""   # Path to service-account.json
+    gchat_delegated_user: str = ""     # user@company.com (ghost mode)
+    gchat_space: str = ""              # spaces/AAAAxyz...
+    gchat_poll_interval: float = 2.0   # Seconds between polls
 
     # Mattermost
     mm_url: str = "http://127.0.0.1:8065"
@@ -115,9 +124,28 @@ def load_config(path: str | Path | None = None) -> Config:
 
     cfg = Config()
 
+    # Adapter (auto-detect if not specified)
+    cfg.adapter = raw.get("adapter", "")
+
     # Telegram
     tg = raw.get("telegram", {})
     cfg.tg_bot_token = tg.get("bot_token", "")
+
+    # Google Chat
+    gc = raw.get("googlechat", {})
+    cfg.gchat_credentials_file = gc.get("credentials_file", "")
+    cfg.gchat_delegated_user = gc.get("delegated_user", "")
+    cfg.gchat_space = gc.get("space", "")
+    cfg.gchat_poll_interval = gc.get("poll_interval", 2.0)
+
+    # Auto-detect adapter
+    if not cfg.adapter:
+        if cfg.tg_bot_token:
+            cfg.adapter = "telegram"
+        elif cfg.gchat_credentials_file:
+            cfg.adapter = "googlechat"
+        else:
+            cfg.adapter = "telegram"  # Default fallback
 
     # Mattermost
     mm = raw.get("mattermost", {})

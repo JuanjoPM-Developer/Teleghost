@@ -6,10 +6,35 @@
 # QUICKSTART: Run `python3 -m bridgemost setup` for an interactive wizard
 # that generates this file automatically.
 
-# ─── Telegram ──────────────────────────────────
+# ─── Adapter (optional) ────────────────────────
+# adapter: "telegram"
+# Options: "telegram", "googlechat"
+# If omitted, auto-detected from config sections below
+
+# ─── Telegram Adapter ─────────────────────────
 telegram:
   bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
   # Create a bot via @BotFather → /newbot → copy the token
+
+# ─── Google Chat Adapter (alternative) ─────────
+# Uncomment this section to use Google Chat instead of Telegram.
+# Requires Google Workspace + Service Account with domain-wide delegation.
+#
+# googlechat:
+#   credentials_file: "/path/to/service-account.json"
+#   # Download from GCP Console → IAM → Service Accounts → Keys → JSON
+#   # This file NEVER leaves your server — BridgeMost reads it locally
+#
+#   delegated_user: "you@yourcompany.com"
+#   # The Workspace user to impersonate (ghost mode)
+#   # Messages appear as this user in Google Chat
+#
+#   space: "spaces/AAAAxxxxxxx"
+#   # The Google Chat Space to bridge
+#   # Find it: Chat API → spaces.list, or from the Space URL
+#
+#   poll_interval: 2.0
+#   # Seconds between message polls (lower = faster but more API calls)
 
 # ─── Mattermost ────────────────────────────────
 mattermost:

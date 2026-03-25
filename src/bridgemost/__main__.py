@@ -6,7 +6,7 @@ import signal
 import sys
 
 from .config import load_config
-from .bridge import BridgeMostBridge
+from .core import BridgeMostCore
 
 
 def setup_logging(level: str, log_file: str = ""):
@@ -43,23 +43,42 @@ def main():
     setup_logging(config.log_level, config.log_file)
     logger = logging.getLogger("bridgemost")
 
-    logger.info("BridgeMost v0.6.0 — Transparent Telegram ↔ Mattermost Bridge")
-    logger.info("Users mapped: %d", len(config.users))
+    from . import __version__
+    logger.info("BridgeMost v%s — Multi-Platform ↔ Mattermost Bridge", __version__)
+    logger.info("Adapter: %s | Users: %d", config.adapter, len(config.users))
 
-    bridge = BridgeMostBridge(config)
+    # Build the appropriate adapter
+    if config.adapter == "googlechat":
+        from .adapters.googlechat import GoogleChatAdapter
+        user_id = config.users[0].telegram_id if config.users else config.gchat_delegated_user
+        adapter = GoogleChatAdapter(
+            credentials_file=config.gchat_credentials_file,
+            delegated_user=config.gchat_delegated_user,
+            space=config.gchat_space,
+            poll_interval=config.gchat_poll_interval,
+            user_id=user_id,
+        )
+    elif config.adapter == "telegram":
+        from .adapters.telegram import TelegramAdapter
+        adapter = TelegramAdapter(config)
+    else:
+        logger.critical("Unknown adapter: %s", config.adapter)
+        sys.exit(1)
+
+    core = BridgeMostCore(config, adapter)
 
     # Graceful shutdown
     loop = asyncio.new_event_loop()
 
     def shutdown_handler(sig, frame):
         logger.info("Received %s, shutting down...", signal.Signals(sig).name)
-        bridge._running = False
+        core._running = False
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
     try:
-        loop.run_until_complete(bridge.start())
+        loop.run_until_complete(core.start())
     except KeyboardInterrupt:
         logger.info("Interrupted, shutting down...")
     finally:
