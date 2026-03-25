@@ -1,5 +1,7 @@
 # BridgeMost 👻
 
+[![CI](https://github.com/JuanjoPM-Developer/BridgeMost/actions/workflows/ci.yml/badge.svg)](https://github.com/JuanjoPM-Developer/BridgeMost/actions/workflows/ci.yml)
+
 **Telegram ↔ Mattermost Transparent Bridge**
 
 BridgeMost makes your Telegram messages appear **natively** in Mattermost — as your real user, with your avatar and name. Bot responses relay back to Telegram instantly via WebSocket.
