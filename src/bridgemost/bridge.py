@@ -303,7 +303,12 @@ class BridgeMostBridge:
         ws_url = self.config.mm_url.replace("https://", "wss://").replace("http://", "ws://")
 
         # Use user's personal token for WS (bot tokens get rejected on WS connect)
-        ws_token = self.config.users[0].mm_token if self.config.users else self.config.mm_bot_token
+        if not self.config.users:
+            logger.critical("FATAL: No users configured — cannot establish WebSocket")
+            await self.mm.close()
+            self._store.close()
+            raise SystemExit(1)
+        ws_token = self.config.users[0].mm_token
 
         # Start WebSocket listener (replaces polling)
         self._ws = MattermostWebSocket(
@@ -839,7 +844,8 @@ class BridgeMostBridge:
                     logger.error("TG send error: %s", e)
 
         # Handle file attachments — smart dispatch by MIME type
-        file_ids_list = post.get("file_ids") or []
+        file_ids_raw = post.get("file_ids")
+        file_ids_list = file_ids_raw if isinstance(file_ids_raw, list) else []
         for fid in file_ids_list:
             try:
                 await self._relay_mm_file_to_tg(user, fid)
@@ -856,8 +862,8 @@ class BridgeMostBridge:
         - Video (mp4/webm/mkv/mov) → send_video
         - Everything else → send_document
         """
-        # Get file metadata from MM
-        token = self.config.mm_bot_token
+        # Use user's PAT for file download (bot token may lack permissions on DM files)
+        token = user.mm_token
         file_info = await self.mm.get_file_info(token, file_id)
 
         if not file_info:
