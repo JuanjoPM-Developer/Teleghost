@@ -120,3 +120,8 @@ def tg_emoji_to_mm(emoji: str) -> str | None:
 def mm_emoji_to_tg(name: str) -> str | None:
     """Convert an MM emoji name to TG Unicode emoji. Returns None if unknown."""
     return MM_TO_UNICODE.get(name)
+
+
+# Platform-agnostic aliases (preferred in core.py)
+unicode_to_mm = tg_emoji_to_mm
+mm_to_unicode = mm_emoji_to_tg

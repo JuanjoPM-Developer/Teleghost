@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .adapters.base import BaseAdapter, InboundMessage, OutboundMessage
 from .config import Config, UserMapping
-from .emoji import tg_emoji_to_mm, mm_emoji_to_tg
+from .emoji import unicode_to_mm, mm_to_unicode
 from .health import HealthServer
 from .mattermost import MattermostClient
 from .store import MessageStore
@@ -323,12 +323,12 @@ class BridgeMostCore:
             return
 
         for emoji in (msg.reaction_added or []):
-            mm_name = tg_emoji_to_mm(emoji)
+            mm_name = unicode_to_mm(emoji)
             if mm_name:
                 await self.mm.add_reaction(user.mm_token, user.mm_user_id, mm_id, mm_name)
 
         for emoji in (msg.reaction_removed or []):
-            mm_name = tg_emoji_to_mm(emoji)
+            mm_name = unicode_to_mm(emoji)
             if mm_name:
                 await self.mm.remove_reaction(user.mm_token, user.mm_user_id, mm_id, mm_name)
 
@@ -534,7 +534,7 @@ class BridgeMostCore:
         if not target_user:
             return
 
-        tg_emoji = mm_emoji_to_tg(emoji_name)
+        tg_emoji = mm_to_unicode(emoji_name)
         if tg_emoji:
             await self.adapter.set_reaction(target_user.telegram_id, platform_id, tg_emoji)
 
@@ -570,9 +570,8 @@ class BridgeMostCore:
         if user_id == user.mm_user_id:
             return
 
-        # Extend typing if not already running
-        existing = getattr(self.adapter, '_typing_tasks', {})
-        if user.telegram_id not in existing or existing.get(user.telegram_id, None) is None or existing[user.telegram_id].done():
+        # Extend typing if adapter supports it
+        if hasattr(self.adapter, 'start_typing_loop'):
             self.adapter.start_typing_loop(user.telegram_id)
 
     async def _retry_mm_post(self, user, channel_id, text, file_ids, max_retries=3) -> dict:

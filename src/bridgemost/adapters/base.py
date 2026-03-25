@@ -8,7 +8,6 @@ platform is on the other end.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable, Awaitable
 
 
