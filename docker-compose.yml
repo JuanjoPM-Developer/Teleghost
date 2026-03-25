@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  bridgemost:
+    build: .
+    container_name: bridgemost
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - bridgemost-data:/data
+    ports:
+      - "9191:9191"
+    environment:
+      - BRIDGEMOST_CONFIG=/config/config.yaml
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9191/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  bridgemost-data:
