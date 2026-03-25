@@ -223,7 +223,7 @@ curl http://localhost:9191/health
 ```json
 {
   "status": "ok",
-  "version": "0.9.1",
+  "version": "0.9.5",
   "transport": "websocket",
   "uptime": "2h15m30s",
   "messages": { "tg_to_mm": 42, "mm_to_tg": 38, "errors": 0 },
@@ -278,6 +278,10 @@ curl http://localhost:9191/health
 
 | Version | Date | Feature |
 |---------|------|---------|
+| v0.9.5 | 2026-03-25 | Fix NameError in whisper.py finally block (GitHub #1), version alignment |
+| v0.9.4 | 2026-03-25 | Smart MM→TG file relay with MIME dispatch (photo/gif/audio/voice/video) |
+| v0.9.3 | 2026-03-24 | Audit fix: 3 bugs in sticker/location/poll handlers |
+| v0.9.2 | 2026-03-24 | Stickers, locations, venues, polls — TG→MM |
 | v0.9.1 | 2026-03-25 | Multi-user highlighted in README, unit tests added |
 | v0.9.0 | 2026-03-24 | README rewrite, improved config.example.yaml with inline docs |
 | v0.8.3 | 2026-03-24 | Code audit cleanup (dead code, unused imports, version alignment) |
