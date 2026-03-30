@@ -50,6 +50,9 @@ class BridgeMostCore:
         # DM channel → (user, bot) mapping
         self._dm_to_user: dict[str, tuple[UserMapping, object]] = {}
 
+        # Channels handled by DM bridges — main relay ignores these
+        self._dm_bridge_channels: set[str] = set()
+
         # WebSocket
         self._ws: MattermostWebSocket | None = None
         self._running = False
@@ -156,6 +159,14 @@ class BridgeMostCore:
             await self.mm.close()
             self._store.close()
             raise SystemExit(1)
+
+        # Discover which DM channels are handled by DM bridges (to avoid duplicates)
+        for bridge in self.config.dm_bridges:
+            for user in self.config.users:
+                channel = await self.mm.get_dm_channel(user.mm_token, user.mm_user_id, bridge.mm_bot_id)
+                if channel:
+                    self._dm_bridge_channels.add(channel)
+                    logger.info("DM bridge '%s' owns channel %s — relay will skip it", bridge.name, channel)
 
         # Wire adapter callbacks
         self.adapter.set_callbacks(
@@ -403,6 +414,8 @@ class BridgeMostCore:
 
         if channel_id not in self._dm_to_user:
             return
+        if channel_id in self._dm_bridge_channels:
+            return  # Handled by dedicated DM bridge relay
         if post_id in self._our_post_ids:
             return
 
@@ -479,6 +492,8 @@ class BridgeMostCore:
 
         if channel_id not in self._dm_to_user:
             return
+        if channel_id in self._dm_bridge_channels:
+            return
         if post_id in self._our_post_ids:
             return
 
@@ -500,6 +515,8 @@ class BridgeMostCore:
         user_id = post.get("user_id", "")
 
         if channel_id not in self._dm_to_user:
+            return
+        if channel_id in self._dm_bridge_channels:
             return
 
         user, bot = self._dm_to_user[channel_id]
@@ -564,6 +581,8 @@ class BridgeMostCore:
         user_id = typing_info.get("user_id", "")
 
         if channel_id not in self._dm_to_user:
+            return
+        if channel_id in self._dm_bridge_channels:
             return
 
         user, bot = self._dm_to_user[channel_id]

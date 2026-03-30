@@ -2,6 +2,15 @@
 
 All notable changes to BridgeMost are documented here.
 
+## v2.2.1 (2026-03-30)
+
+### Fixed
+- **Duplicate relay** — main relay now skips DM channels owned by DM bridges
+  - All WS handlers (post, edit, delete, typing) filter `_dm_bridge_channels`
+  - Prevents messages from being relayed by both the relay bot and the DM bridge bot
+- **Event loop crash** — wrapped `asyncio.gather` in async function to fix
+  "future belongs to a different loop" error on Python 3.13
+
 ## v2.2.0 (2026-03-30)
 
 ### Added

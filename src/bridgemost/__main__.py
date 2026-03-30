@@ -83,6 +83,7 @@ def main():
 
     # Graceful shutdown
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     def shutdown_handler(sig, frame):
         logger.info("Received %s, shutting down...", signal.Signals(sig).name)
@@ -93,9 +94,12 @@ def main():
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-    try:
+    async def _run_all():
         coros = [core.start()] + [r.start() for r in dm_relays]
-        loop.run_until_complete(asyncio.gather(*coros))
+        await asyncio.gather(*coros)
+
+    try:
+        loop.run_until_complete(_run_all())
     except KeyboardInterrupt:
         logger.info("Interrupted, shutting down...")
     finally:
