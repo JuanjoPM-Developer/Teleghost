@@ -30,3 +30,9 @@ messages.db-wal
 # OS
 .DS_Store
 Thumbs.db
+dm_apex.db
+dm_apex.db-shm
+dm_apex.db-wal
+dm_*.db
+dm_*.db-shm
+dm_*.db-wal
