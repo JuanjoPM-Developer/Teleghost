@@ -69,6 +69,57 @@ class TestConfigLoad:
         with pytest.raises(Exception):
             Config.from_file("/nonexistent/config.yaml")
 
+    def test_telegram_presentation_defaults(self, minimal_config):
+        cfg = load_config(str(minimal_config))
+        assert cfg.telegram_presentation.enabled is True
+        assert cfg.telegram_presentation.suppress_internal_progress is True
+        assert cfg.telegram_presentation.show_placeholder is True
+        assert cfg.telegram_presentation.placeholder_text == "🧠⚡ Conectando a la red neuronal..."
+
+    def test_telegram_presentation_custom_values(self, tmp_path):
+        data = {
+            "telegram": {"bot_token": "123:ABC"},
+            "mattermost": {
+                "url": "http://localhost:8065",
+                "bot_token": "sometoken",
+                "bot_user_id": "abcdef1234567890abcdef1234",
+            },
+            "users": [
+                {
+                    "telegram_id": 12345,
+                    "telegram_name": "TestUser",
+                    "mm_user_id": "user1234567890abcdef123456",
+                    "mm_token": "pat-abc123",
+                    "bots": [
+                        {
+                            "name": "mybot",
+                            "mm_bot_id": "bot12345678901234567890ab",
+                            "default": True,
+                        }
+                    ],
+                }
+            ],
+            "telegram_presentation": {
+                "enabled": True,
+                "suppress_internal_progress": True,
+                "show_placeholder": True,
+                "placeholder_text": "🧠⚡ Enlace sináptico en curso...",
+                "placeholder_delay_seconds": 0.4,
+                "stream_final_response": True,
+                "stream_chunk_chars": 90,
+                "stream_edit_interval": 0.05,
+            },
+        }
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(yaml.dump(data, allow_unicode=True))
+
+        cfg = load_config(str(cfg_file))
+
+        assert cfg.telegram_presentation.placeholder_text == "🧠⚡ Enlace sináptico en curso..."
+        assert cfg.telegram_presentation.placeholder_delay_seconds == 0.4
+        assert cfg.telegram_presentation.stream_chunk_chars == 90
+        assert cfg.telegram_presentation.stream_edit_interval == 0.05
+
 
 class TestDmBridgesConfig:
     """Test dm_bridges section parsing."""

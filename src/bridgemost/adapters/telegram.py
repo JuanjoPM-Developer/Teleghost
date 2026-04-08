@@ -6,6 +6,7 @@ media upload/download, reactions, typing indicators, and slash-command passthrou
 
 import asyncio
 import logging
+import re
 import tempfile
 from pathlib import Path
 
@@ -69,6 +70,8 @@ class TelegramAdapter(BaseAdapter):
         self._bot = None
         # Typing tasks per user
         self._typing_tasks: dict[int, asyncio.Task] = {}
+        # Streaming edit tasks per (user, message)
+        self._stream_tasks: dict[tuple[int, int], asyncio.Task] = {}
         # Rate limiter: max 25 msgs/sec
         from collections import deque
         import time
@@ -118,6 +121,11 @@ class TelegramAdapter(BaseAdapter):
             if not task.done():
                 task.cancel()
         self._typing_tasks.clear()
+
+        for task in self._stream_tasks.values():
+            if not task.done():
+                task.cancel()
+        self._stream_tasks.clear()
 
         if self._app:
             await self._app.updater.stop()
@@ -447,29 +455,115 @@ class TelegramAdapter(BaseAdapter):
             except Exception:
                 pass
 
-    async def edit_message(self, user_id, platform_msg_id, new_text: str) -> bool:
+    async def _cancel_stream_task(self, user_id: int, platform_msg_id: int) -> None:
+        key = (int(user_id), int(platform_msg_id))
+        task = self._stream_tasks.get(key)
+        current = asyncio.current_task()
+        if not task or task.done() or task is current:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self._stream_tasks.get(key) is task:
+                self._stream_tasks.pop(key, None)
+
+    @staticmethod
+    def _stream_snapshots(text: str, chunk_size: int) -> list[str]:
+        cleaned = text or ""
+        if chunk_size <= 0 or len(cleaned) <= chunk_size:
+            return [cleaned]
+
+        tokens = re.findall(r"\S+\s*", cleaned)
+        if not tokens:
+            return [cleaned]
+
+        snapshots = []
+        acc = ""
+        next_cut = chunk_size
+        for token in tokens:
+            acc += token
+            if len(acc) >= next_cut:
+                snapshots.append(acc.rstrip())
+                next_cut += chunk_size
+
+        final_text = cleaned.rstrip() if cleaned.rstrip() else cleaned
+        if not snapshots or snapshots[-1] != final_text:
+            snapshots.append(final_text)
+        return snapshots
+
+    async def _edit_message_text(self, user_id, platform_msg_id, new_text: str, parse_markdown: bool = True) -> bool:
         if not self._bot:
             return False
         try:
-            from ..markdown import mm_to_telegram
-            tg_text = mm_to_telegram(new_text)
-            try:
+            if parse_markdown:
+                from ..markdown import mm_to_telegram
+                tg_text = mm_to_telegram(new_text)
+                try:
+                    await self._bot.edit_message_text(
+                        chat_id=user_id,
+                        message_id=platform_msg_id,
+                        text=tg_text,
+                        parse_mode="MarkdownV2",
+                    )
+                except Exception:
+                    await self._bot.edit_message_text(
+                        chat_id=user_id,
+                        message_id=platform_msg_id,
+                        text=new_text,
+                    )
+            else:
                 await self._bot.edit_message_text(
-                    chat_id=user_id, message_id=platform_msg_id,
-                    text=tg_text, parse_mode="MarkdownV2",
-                )
-            except Exception:
-                await self._bot.edit_message_text(
-                    chat_id=user_id, message_id=platform_msg_id, text=new_text,
+                    chat_id=user_id,
+                    message_id=platform_msg_id,
+                    text=new_text,
                 )
             return True
         except Exception as e:
             logger.error("TG edit error: %s", e)
             return False
 
+    async def edit_message(self, user_id, platform_msg_id, new_text: str) -> bool:
+        await self._cancel_stream_task(user_id, platform_msg_id)
+        return await self._edit_message_text(user_id, platform_msg_id, new_text, parse_markdown=True)
+
+    async def stream_edit_message(self, user_id, platform_msg_id, new_text: str, chunk_size: int = 180, interval: float = 0.18) -> bool:
+        if not self._bot:
+            return False
+
+        await self._cancel_stream_task(user_id, platform_msg_id)
+        key = (int(user_id), int(platform_msg_id))
+        current = asyncio.current_task()
+        if current:
+            self._stream_tasks[key] = current
+
+        try:
+            snapshots = self._stream_snapshots(new_text, chunk_size)
+            if len(snapshots) == 1:
+                return await self._edit_message_text(user_id, platform_msg_id, snapshots[0], parse_markdown=True)
+
+            for partial in snapshots[:-1]:
+                await self._rate_wait()
+                ok = await self._edit_message_text(user_id, platform_msg_id, partial, parse_markdown=False)
+                if not ok:
+                    return False
+                if interval > 0:
+                    await asyncio.sleep(interval)
+
+            await self._rate_wait()
+            return await self._edit_message_text(user_id, platform_msg_id, snapshots[-1], parse_markdown=True)
+        except asyncio.CancelledError:
+            return False
+        finally:
+            if current and self._stream_tasks.get(key) is current:
+                self._stream_tasks.pop(key, None)
+
     async def delete_message(self, user_id, platform_msg_id) -> bool:
         if not self._bot:
             return False
+        await self._cancel_stream_task(user_id, platform_msg_id)
         try:
             await self._bot.delete_message(chat_id=user_id, message_id=platform_msg_id)
             return True

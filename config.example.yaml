@@ -16,6 +16,19 @@ telegram:
   bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
   # Create a bot via @BotFather → /newbot → copy the token
 
+# ─── Telegram Presentation (optional) ──────────
+# Clean Telegram UX for Hermes-style bots.
+#
+# telegram_presentation:
+#   enabled: true
+#   suppress_internal_progress: true
+#   show_placeholder: true
+#   placeholder_text: "🧠⚡ Conectando a la red neuronal..."
+#   placeholder_delay_seconds: 1.2
+#   stream_final_response: true
+#   stream_chunk_chars: 180
+#   stream_edit_interval: 0.18
+
 # ─── Google Chat Adapter (alternative) ─────────
 # Uncomment this section to use Google Chat instead of Telegram.
 # Requires Google Workspace + Service Account with domain-wide delegation.

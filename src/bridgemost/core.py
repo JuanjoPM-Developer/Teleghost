@@ -17,13 +17,14 @@ from .emoji import unicode_to_mm, mm_to_unicode
 from .health import HealthServer
 from .mattermost import MattermostClient
 from .store import MessageStore
+from .telegram_presentation import TelegramPresentationMixin
 from .websocket import MattermostWebSocket
 from .whisper import WhisperClient
 
 logger = logging.getLogger("bridgemost.core")
 
 
-class BridgeMostCore:
+class BridgeMostCore(TelegramPresentationMixin):
     """Platform-agnostic relay engine.
 
     Connects one adapter (Telegram, Google Chat, etc.) to Mattermost.
@@ -69,6 +70,8 @@ class BridgeMostCore:
                 model=config.whisper_model,
                 language=config.whisper_language,
             )
+
+        self._init_telegram_presentation()
 
     # --- Message tracking ---
 
@@ -311,6 +314,7 @@ class BridgeMostCore:
                 self._track_pair(msg.platform_msg_id, post_id)
                 # Start typing (bot is processing)
                 self.adapter.start_typing_loop(user.telegram_id)
+                await self._schedule_placeholder(dm, user.telegram_id)
 
     async def _handle_inbound_edit(self, msg: InboundMessage):
         """Process an edit from the adapter → edit MM post."""
@@ -429,19 +433,25 @@ class BridgeMostCore:
         if user_id == user.mm_user_id:
             return
 
-        # Stop typing
+        raw_text = post.get("message", "")
+        if self._should_suppress_mm_text(raw_text):
+            return
+
+        # Stop typing only when a visible response arrives.
         self.adapter.stop_typing_loop(user.telegram_id)
 
-        text = post.get("message", "")
+        text = raw_text
         if text and len(user.bots) > 1:
             text = f"🤖 {bot.name}: {text}"
 
         sent_id = None
         if text:
             self.health.record_mm_to_tg()
-            sent_id = await self.adapter.send_message(
-                user.telegram_id, OutboundMessage(text=text)
+            sent_id = await self._present_visible_text(
+                channel_id, user.telegram_id, post_id, text
             )
+        else:
+            await self._clear_pending_presentation(channel_id, user.telegram_id, delete_placeholder=True)
 
         # File attachments
         file_ids_raw = post.get("file_ids")
@@ -451,9 +461,6 @@ class BridgeMostCore:
                 await self._relay_mm_file(user, fid)
             except Exception as e:
                 logger.error("File relay error: %s", e)
-
-        if sent_id and post_id:
-            self._track_pair(sent_id, post_id)
 
     async def _relay_mm_file(self, user: UserMapping, file_id: str):
         """Download MM file and send via adapter."""
@@ -508,12 +515,20 @@ class BridgeMostCore:
         if user_id == user.mm_user_id:
             return
 
-        platform_id = self._lookup_platform(post_id)
-        if not platform_id:
+        raw_text = post.get("message", "")
+        if not raw_text:
+            return
+        if self._should_suppress_mm_text(raw_text):
             return
 
-        new_text = post.get("message", "")
-        if not new_text:
+        new_text = raw_text
+        if len(user.bots) > 1:
+            new_text = f"🤖 {bot.name}: {new_text}"
+
+        platform_id = self._lookup_platform(post_id)
+        if not platform_id:
+            self.adapter.stop_typing_loop(user.telegram_id)
+            await self._present_visible_text(channel_id, user.telegram_id, post_id, new_text)
             return
 
         # Debounce: buffer rapid edits (streaming bots) to avoid TG flood control
@@ -639,7 +654,7 @@ class BridgeMostCore:
         return last_error
 
 
-class DmBridgeRelay:
+class DmBridgeRelay(TelegramPresentationMixin):
     """Dedicated DM bridge: one TG bot ↔ one MM bot's DM channel per user.
 
     Each relay instance polls its own Telegram bot token and subscribes to the
@@ -684,6 +699,8 @@ class DmBridgeRelay:
                 model=config.whisper_model,
                 language=config.whisper_language,
             )
+
+        self._init_telegram_presentation()
 
         # Edit debounce: post_id → asyncio.Task (delays TG edit by 2s)
         self._edit_debounce: dict[str, object] = {}
@@ -925,6 +942,7 @@ class DmBridgeRelay:
                 self._mark_our_post(post_id)
                 self._track_pair(msg.platform_msg_id, post_id)
                 self.adapter.start_typing_loop(user.telegram_id)
+                await self._schedule_placeholder(dm, user.telegram_id)
 
     async def _handle_inbound_edit(self, msg: InboundMessage):
         """Process an edit from TG → edit MM post."""
@@ -973,15 +991,21 @@ class DmBridgeRelay:
         if user_id == user.mm_user_id:
             return
 
+        raw_text = post.get("message", "")
+        if self._should_suppress_mm_text(raw_text):
+            return
+
         self.adapter.stop_typing_loop(user.telegram_id)
 
-        text = post.get("message", "")
+        text = raw_text
         sent_id = None
         if text:
             self._stats["mm_to_tg"] += 1
-            sent_id = await self.adapter.send_message(
-                user.telegram_id, OutboundMessage(text=text)
+            sent_id = await self._present_visible_text(
+                channel_id, user.telegram_id, post_id, text
             )
+        else:
+            await self._clear_pending_presentation(channel_id, user.telegram_id, delete_placeholder=True)
 
         file_ids_raw = post.get("file_ids")
         file_ids_list = file_ids_raw if isinstance(file_ids_raw, list) else []
@@ -990,9 +1014,6 @@ class DmBridgeRelay:
                 await self._relay_mm_file(user, fid)
             except Exception as e:
                 logger.error("DmBridge '%s' file relay error: %s", self.bridge.name, e)
-
-        if sent_id and post_id:
-            self._track_pair(sent_id, post_id)
 
     async def _relay_mm_file(self, user: UserMapping, file_id: str):
         """Download MM file and send via adapter."""
@@ -1045,12 +1066,16 @@ class DmBridgeRelay:
         if user_id == user.mm_user_id:
             return
 
-        platform_id = self._lookup_platform(post_id)
-        if not platform_id:
-            return
-
         new_text = post.get("message", "")
         if not new_text:
+            return
+        if self._should_suppress_mm_text(new_text):
+            return
+
+        platform_id = self._lookup_platform(post_id)
+        if not platform_id:
+            self.adapter.stop_typing_loop(user.telegram_id)
+            await self._present_visible_text(channel_id, user.telegram_id, post_id, new_text)
             return
 
         # Debounce: buffer rapid edits (streaming bots) to avoid TG flood control

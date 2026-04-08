@@ -2,6 +2,19 @@
 
 All notable changes to BridgeMost are documented here.
 
+## v2.2.5 (2026-04-08)
+
+### Added
+- **Telegram clean mode** — internal Hermes/Mattermost progress chatter is now suppressed before it reaches Telegram
+- **Neural-link placeholder UX** — BridgeMost can post `🧠⚡ Conectando a la red neuronal...` while the MM bot works, then reuse that same message for the real answer
+- **Telegram response streaming** — final responses can now reveal progressively by editing the placeholder message in-place
+- **Configurable presentation layer** via new `telegram_presentation:` settings in `config.yaml`
+
+### Changed
+- Final Telegram replies now prefer transforming the placeholder into the real answer instead of sending a second message
+- BridgeMost only stops the Telegram typing loop when a visible MM response arrives
+- Version bumped to `2.2.5`
+
 ## v2.2.4 (2026-04-08)
 
 ### Added

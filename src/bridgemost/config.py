@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .telegram_presentation import TelegramPresentationConfig
+
 logger = logging.getLogger("bridgemost")
 
 
@@ -85,6 +87,9 @@ class Config:
     whisper_model: str = "large-v3"  # Model name (large-v3, whisper-1, etc.)
     whisper_language: str = ""     # ISO 639-1 code (es, en) or empty for auto
     whisper_keep_audio: bool = True  # Also send original audio alongside text
+
+    # Telegram clean presentation layer
+    telegram_presentation: TelegramPresentationConfig = field(default_factory=TelegramPresentationConfig)
 
     def get_user_by_tg_id(self, tg_id: int) -> UserMapping | None:
         """Find user mapping by Telegram ID."""
@@ -238,5 +243,18 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.whisper_model = vtt.get("model", "large-v3")
     cfg.whisper_language = vtt.get("language", "")
     cfg.whisper_keep_audio = vtt.get("keep_audio", True)
+
+    # Telegram presentation
+    tp = raw.get("telegram_presentation", {})
+    cfg.telegram_presentation = TelegramPresentationConfig(
+        enabled=tp.get("enabled", True),
+        suppress_internal_progress=tp.get("suppress_internal_progress", True),
+        show_placeholder=tp.get("show_placeholder", True),
+        placeholder_text=tp.get("placeholder_text", "🧠⚡ Conectando a la red neuronal..."),
+        placeholder_delay_seconds=float(tp.get("placeholder_delay_seconds", 1.2)),
+        stream_final_response=tp.get("stream_final_response", True),
+        stream_chunk_chars=int(tp.get("stream_chunk_chars", 180)),
+        stream_edit_interval=float(tp.get("stream_edit_interval", 0.18)),
+    )
 
     return cfg
