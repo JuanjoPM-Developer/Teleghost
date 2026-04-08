@@ -686,6 +686,15 @@ class DmBridgeRelay:
 
         # Stats for health reporting
         self._stats = {"tg_to_mm": 0, "mm_to_tg": 0, "errors": 0}
+        self._state = "starting"
+        self._last_error = ""
+
+    def mark_failed(self, error: BaseException | str):
+        """Mark this relay as failed but keep the main process alive."""
+        self._state = "failed"
+        self._last_error = str(error)
+        self._stats["errors"] += 1
+        self._running = False
 
     def stats_snapshot(self) -> dict:
         """Return current stats for health reporting."""
@@ -695,6 +704,8 @@ class DmBridgeRelay:
             "mm_to_tg": self._stats["mm_to_tg"],
             "errors": self._stats["errors"],
             "channels": len(self._dm_to_user),
+            "state": self._state,
+            "last_error": self._last_error or None,
         }
 
     # --- Message tracking ---
@@ -807,6 +818,8 @@ class DmBridgeRelay:
             self.bridge.name, len(self._dm_to_user),
         )
 
+        self._state = "active"
+        self._last_error = ""
         self._running = True
         try:
             while self._running:

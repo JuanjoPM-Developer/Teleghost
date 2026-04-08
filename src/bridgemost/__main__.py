@@ -9,6 +9,21 @@ from .config import load_config
 from .core import BridgeMostCore, DmBridgeRelay
 
 
+async def _run_dm_bridge_relay(relay: DmBridgeRelay):
+    """Run one DM bridge relay without taking down the whole process."""
+    logger = logging.getLogger("bridgemost")
+    try:
+        await relay.start()
+    except asyncio.CancelledError:
+        raise
+    except BaseException as exc:  # catch SystemExit too; degraded mode must survive bad tokens
+        relay.mark_failed(exc)
+        logger.exception(
+            "DM bridge '%s' failed; continuing in degraded mode",
+            relay.bridge.name,
+        )
+
+
 def setup_logging(level: str, log_file: str = ""):
     """Configure logging."""
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
@@ -95,7 +110,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown_handler)
 
     async def _run_all():
-        coros = [core.start()] + [r.start() for r in dm_relays]
+        coros = [core.start()] + [_run_dm_bridge_relay(r) for r in dm_relays]
         await asyncio.gather(*coros)
 
     try:

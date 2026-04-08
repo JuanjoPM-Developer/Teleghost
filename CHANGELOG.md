@@ -2,6 +2,20 @@
 
 All notable changes to BridgeMost are documented here.
 
+## v2.2.3 (2026-04-08)
+
+### Fixed
+- **Degraded DM bridge startup** — a failed `dm_bridge` no longer kills the whole BridgeMost process
+  - added guarded relay runner in `__main__.py`
+  - bad dedicated Telegram bot tokens now mark only that relay as failed
+  - main relay and healthy DM bridges continue serving traffic
+- **Relay health visibility** — DM bridge stats now expose `state` and `last_error`
+  - health endpoint can now report failed bridges explicitly instead of only disappearing on crash
+
+### Changed
+- Version bumped to `2.2.3`
+- Service operators can now keep the bridge up while isolating one broken dedicated bot token
+
 ## v2.2.1 (2026-03-30)
 
 ### Fixed
