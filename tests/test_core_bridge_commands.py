@@ -40,24 +40,24 @@ def _make_config():
         users=[
             UserMapping(
                 telegram_id=12345,
-                telegram_name="juanjo",
+                telegram_name="owner",
                 mm_user_id="user1234567890abcdef123456",
                 mm_token="pat-abc123",
                 bots=[
                     BotRoute(
-                        name="oceana",
+                        name="assistant",
                         mm_bot_id="bot12345678901234567890ab",
                         is_default=True,
                     )
                 ],
-                active_bot="oceana",
+                active_bot="assistant",
             )
         ],
         dm_bridges=[
             DmBridge(
                 tg_bot_token="111:ABC",
                 mm_bot_id="bot12345678901234567890ab",
-                name="oceana",
+                name="assistant",
             )
         ],
     )
@@ -77,5 +77,5 @@ def test_dm_bridge_relay_bridge_command_mentions_passthrough():
 
     reply = asyncio.run(relay._handle_command("bridge", [], 12345))
 
-    assert "DM bridge *oceana*" in reply
+    assert "DM bridge *assistant*" in reply
     assert "slash commands se envían al bot Hermes conectado" in reply

@@ -60,7 +60,7 @@ def test_local_bridgemost_commands_are_not_forwarded():
 
     adapter._on_message = _on_message
 
-    asyncio.run(adapter._on_tg_passthrough_command(_make_update("/bot oceana"), None))
+    asyncio.run(adapter._on_tg_passthrough_command(_make_update("/bot assistant"), None))
 
     assert captured == []
 

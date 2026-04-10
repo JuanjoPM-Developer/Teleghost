@@ -31,6 +31,7 @@ Unlike Matterbridge or webhooks that post with `[User]` prefixes, BridgeMost pos
 | 📲 DM Bridge mode | Give each MM bot its own dedicated TG bot — DM it directly (v2.2.0) |
 | /️⃣ Hermes slash passthrough | `/new`, `/model`, `/help`, etc. cross Telegram → Mattermost unchanged (v2.2.4) |
 | 🧠 Telegram clean mode | Tool chatter stays in MM; Telegram sees a neural-link placeholder + clean final response (v2.2.5) |
+| ↪️ Reply/thread sync | Telegram replies map to Mattermost threads and threaded MM replies come back as native Telegram replies (v2.2.6) |
 | ⚡ Real-time WebSocket | Responses arrive instantly (no polling) |
 | ✏️ Edit & delete sync | Edits and deletes stay in sync both ways |
 | 😀 Reactions | Emoji reactions synced bidirectionally |
@@ -78,6 +79,12 @@ When the upstream Mattermost bot is Hermes, BridgeMost can now keep Telegram cle
 - the final answer can be revealed progressively for a streaming-like UX
 
 This behavior is configurable through `telegram_presentation:` in `config.yaml`.
+
+### Reply/thread sync (v2.2.6)
+
+- Replying to a Telegram message now posts into the corresponding Mattermost thread root
+- Replies emitted by Mattermost bots with `root_id` come back to Telegram as native replies when the root message is known
+- Clean mode preserves the reply target, so the placeholder and final edited answer stay visually attached to the original Telegram message
 
 > **Multi-user ready:** Multiple people can use the same BridgeMost instance — each with their own chat account, Mattermost identity, and bot routing. Add users to `config.yaml` and they appear as themselves in Mattermost. No shared accounts, no impersonation.
 

@@ -2,6 +2,20 @@
 
 All notable changes to BridgeMost are documented here.
 
+## v2.2.6 (2026-04-10)
+
+### Added
+- **Reply/thread sync** — Telegram replies now land in the correct Mattermost thread root
+- **Bidirectional reply mapping** — Mattermost threaded replies now return to Telegram as native replies when the root message is known
+- **Clean-mode reply preservation** — the neural-link placeholder and final edited answer keep the original Telegram reply target
+
+### Fixed
+- **Owner-only Telegram ingress hardening** — rejected group traffic, `sender_chat` posts, and forwarded messages even when sent by an allowed user
+- **Repo hygiene** — ignored `config.yaml.bak*` and replaced infra-specific example names in tests/docs with neutral placeholders
+
+### Changed
+- Version bumped to `2.2.6`
+
 ## v2.2.5 (2026-04-08)
 
 ### Added
