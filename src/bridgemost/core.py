@@ -24,6 +24,25 @@ from .whisper import WhisperClient
 logger = logging.getLogger("bridgemost.core")
 
 
+async def _resolve_mm_thread_root_id(mm: MattermostClient, token: str, mm_post_id: str | None) -> str | None:
+    """Resolve any post inside a Mattermost thread to its root post ID."""
+    if not mm_post_id:
+        return None
+    try:
+        return await mm.get_thread_root_id(token, mm_post_id)
+    except Exception:
+        logger.exception("Failed to resolve thread root for Mattermost post %s", mm_post_id)
+        return mm_post_id
+
+
+def _reply_target_from_mm_post(lookup_platform, post: dict) -> int | None:
+    """Resolve the Telegram reply target for a Mattermost post when possible."""
+    root_id = post.get("root_id", "")
+    if not root_id:
+        return None
+    return lookup_platform(root_id)
+
+
 class BridgeMostCore(TelegramPresentationMixin):
     """Platform-agnostic relay engine.
 
@@ -247,6 +266,11 @@ class BridgeMostCore(TelegramPresentationMixin):
         dm = active_bot.mm_dm_channel
         self.health.record_tg_to_mm()
 
+        reply_root_id = None
+        if msg.reply_to_msg_id is not None:
+            reply_mm_post_id = self._lookup_mm(msg.reply_to_msg_id)
+            reply_root_id = await _resolve_mm_thread_root_id(self.mm, user.mm_token, reply_mm_post_id)
+
         file_ids = []
         text = msg.text
         voice_prefix = ""
@@ -307,14 +331,21 @@ class BridgeMostCore(TelegramPresentationMixin):
 
         # Post to MM
         if text or file_ids:
-            result = await self._retry_mm_post(user, dm, text, file_ids or None)
+            if reply_root_id is not None:
+                result = await self._retry_mm_post(user, dm, text, file_ids or None, root_id=reply_root_id)
+            else:
+                result = await self._retry_mm_post(user, dm, text, file_ids or None)
             post_id = result.get("id")
             if post_id:
                 self._mark_our_post(post_id)
                 self._track_pair(msg.platform_msg_id, post_id)
                 # Start typing (bot is processing)
                 self.adapter.start_typing_loop(user.telegram_id)
-                await self._schedule_placeholder(dm, user.telegram_id)
+                await self._schedule_placeholder(
+                    dm,
+                    user.telegram_id,
+                    reply_to_platform_msg_id=msg.reply_to_msg_id,
+                )
 
     async def _handle_inbound_edit(self, msg: InboundMessage):
         """Process an edit from the adapter → edit MM post."""
@@ -437,6 +468,8 @@ class BridgeMostCore(TelegramPresentationMixin):
         if self._should_suppress_mm_text(raw_text):
             return
 
+        reply_to_platform_msg_id = _reply_target_from_mm_post(self._lookup_platform, post)
+
         # Stop typing only when a visible response arrives.
         self.adapter.stop_typing_loop(user.telegram_id)
 
@@ -448,7 +481,11 @@ class BridgeMostCore(TelegramPresentationMixin):
         if text:
             self.health.record_mm_to_tg()
             sent_id = await self._present_visible_text(
-                channel_id, user.telegram_id, post_id, text
+                channel_id,
+                user.telegram_id,
+                post_id,
+                text,
+                reply_to_platform_msg_id=reply_to_platform_msg_id,
             )
         else:
             await self._clear_pending_presentation(channel_id, user.telegram_id, delete_placeholder=True)
@@ -458,11 +495,16 @@ class BridgeMostCore(TelegramPresentationMixin):
         file_ids_list = file_ids_raw if isinstance(file_ids_raw, list) else []
         for fid in file_ids_list:
             try:
-                await self._relay_mm_file(user, fid)
+                await self._relay_mm_file(user, fid, reply_to_platform_msg_id=reply_to_platform_msg_id)
             except Exception as e:
                 logger.error("File relay error: %s", e)
 
-    async def _relay_mm_file(self, user: UserMapping, file_id: str):
+    async def _relay_mm_file(
+        self,
+        user: UserMapping,
+        file_id: str,
+        reply_to_platform_msg_id: int | None = None,
+    ):
         """Download MM file and send via adapter."""
         token = user.mm_token
         file_info = await self.mm.get_file_info(token, file_id)
@@ -489,6 +531,7 @@ class BridgeMostCore(TelegramPresentationMixin):
                     file_name=filename,
                     file_mime=mime,
                     file_size=size,
+                    reply_to_platform_msg_id=reply_to_platform_msg_id,
                 ),
             )
         finally:
@@ -525,10 +568,17 @@ class BridgeMostCore(TelegramPresentationMixin):
         if len(user.bots) > 1:
             new_text = f"🤖 {bot.name}: {new_text}"
 
+        reply_to_platform_msg_id = _reply_target_from_mm_post(self._lookup_platform, post)
         platform_id = self._lookup_platform(post_id)
         if not platform_id:
             self.adapter.stop_typing_loop(user.telegram_id)
-            await self._present_visible_text(channel_id, user.telegram_id, post_id, new_text)
+            await self._present_visible_text(
+                channel_id,
+                user.telegram_id,
+                post_id,
+                new_text,
+                reply_to_platform_msg_id=reply_to_platform_msg_id,
+            )
             return
 
         # Debounce: buffer rapid edits (streaming bots) to avoid TG flood control
@@ -634,11 +684,17 @@ class BridgeMostCore(TelegramPresentationMixin):
         if hasattr(self.adapter, 'start_typing_loop'):
             self.adapter.start_typing_loop(user.telegram_id)
 
-    async def _retry_mm_post(self, user, channel_id, text, file_ids, max_retries=3) -> dict:
+    async def _retry_mm_post(self, user, channel_id, text, file_ids, max_retries=3, root_id=None) -> dict:
         delay = 1.0
         last_error = {}
         for attempt in range(max_retries):
-            result = await self.mm.post_message(user.mm_token, channel_id, text, file_ids)
+            result = await self.mm.post_message(
+                user.mm_token,
+                channel_id,
+                text,
+                file_ids,
+                root_id=root_id,
+            )
             if result.get("id"):
                 return result
             last_error = result
@@ -881,6 +937,11 @@ class DmBridgeRelay(TelegramPresentationMixin):
 
         self._stats["tg_to_mm"] += 1
 
+        reply_root_id = None
+        if msg.reply_to_msg_id is not None:
+            reply_mm_post_id = self._lookup_mm(msg.reply_to_msg_id)
+            reply_root_id = await _resolve_mm_thread_root_id(self.mm, user.mm_token, reply_mm_post_id)
+
         file_ids = []
         text = msg.text
         voice_prefix = ""
@@ -936,13 +997,20 @@ class DmBridgeRelay(TelegramPresentationMixin):
                 pass
 
         if text or file_ids:
-            result = await self._retry_mm_post(user, dm, text, file_ids or None)
+            if reply_root_id is not None:
+                result = await self._retry_mm_post(user, dm, text, file_ids or None, root_id=reply_root_id)
+            else:
+                result = await self._retry_mm_post(user, dm, text, file_ids or None)
             post_id = result.get("id")
             if post_id:
                 self._mark_our_post(post_id)
                 self._track_pair(msg.platform_msg_id, post_id)
                 self.adapter.start_typing_loop(user.telegram_id)
-                await self._schedule_placeholder(dm, user.telegram_id)
+                await self._schedule_placeholder(
+                    dm,
+                    user.telegram_id,
+                    reply_to_platform_msg_id=msg.reply_to_msg_id,
+                )
 
     async def _handle_inbound_edit(self, msg: InboundMessage):
         """Process an edit from TG → edit MM post."""
@@ -995,6 +1063,7 @@ class DmBridgeRelay(TelegramPresentationMixin):
         if self._should_suppress_mm_text(raw_text):
             return
 
+        reply_to_platform_msg_id = _reply_target_from_mm_post(self._lookup_platform, post)
         self.adapter.stop_typing_loop(user.telegram_id)
 
         text = raw_text
@@ -1002,7 +1071,11 @@ class DmBridgeRelay(TelegramPresentationMixin):
         if text:
             self._stats["mm_to_tg"] += 1
             sent_id = await self._present_visible_text(
-                channel_id, user.telegram_id, post_id, text
+                channel_id,
+                user.telegram_id,
+                post_id,
+                text,
+                reply_to_platform_msg_id=reply_to_platform_msg_id,
             )
         else:
             await self._clear_pending_presentation(channel_id, user.telegram_id, delete_placeholder=True)
@@ -1011,11 +1084,16 @@ class DmBridgeRelay(TelegramPresentationMixin):
         file_ids_list = file_ids_raw if isinstance(file_ids_raw, list) else []
         for fid in file_ids_list:
             try:
-                await self._relay_mm_file(user, fid)
+                await self._relay_mm_file(user, fid, reply_to_platform_msg_id=reply_to_platform_msg_id)
             except Exception as e:
                 logger.error("DmBridge '%s' file relay error: %s", self.bridge.name, e)
 
-    async def _relay_mm_file(self, user: UserMapping, file_id: str):
+    async def _relay_mm_file(
+        self,
+        user: UserMapping,
+        file_id: str,
+        reply_to_platform_msg_id: int | None = None,
+    ):
         """Download MM file and send via adapter."""
         token = user.mm_token
         file_info = await self.mm.get_file_info(token, file_id)
@@ -1042,6 +1120,7 @@ class DmBridgeRelay(TelegramPresentationMixin):
                     file_name=filename,
                     file_mime=mime,
                     file_size=size,
+                    reply_to_platform_msg_id=reply_to_platform_msg_id,
                 ),
             )
         finally:
@@ -1072,10 +1151,17 @@ class DmBridgeRelay(TelegramPresentationMixin):
         if self._should_suppress_mm_text(new_text):
             return
 
+        reply_to_platform_msg_id = _reply_target_from_mm_post(self._lookup_platform, post)
         platform_id = self._lookup_platform(post_id)
         if not platform_id:
             self.adapter.stop_typing_loop(user.telegram_id)
-            await self._present_visible_text(channel_id, user.telegram_id, post_id, new_text)
+            await self._present_visible_text(
+                channel_id,
+                user.telegram_id,
+                post_id,
+                new_text,
+                reply_to_platform_msg_id=reply_to_platform_msg_id,
+            )
             return
 
         # Debounce: buffer rapid edits (streaming bots) to avoid TG flood control
@@ -1172,11 +1258,17 @@ class DmBridgeRelay(TelegramPresentationMixin):
         if hasattr(self.adapter, 'start_typing_loop'):
             self.adapter.start_typing_loop(user.telegram_id)
 
-    async def _retry_mm_post(self, user, channel_id, text, file_ids, max_retries=3) -> dict:
+    async def _retry_mm_post(self, user, channel_id, text, file_ids, max_retries=3, root_id=None) -> dict:
         delay = 1.0
         last_error = {}
         for attempt in range(max_retries):
-            result = await self.mm.post_message(user.mm_token, channel_id, text, file_ids)
+            result = await self.mm.post_message(
+                user.mm_token,
+                channel_id,
+                text,
+                file_ids,
+                root_id=root_id,
+            )
             if result.get("id"):
                 return result
             last_error = result

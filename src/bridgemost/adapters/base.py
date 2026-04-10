@@ -22,6 +22,7 @@ class InboundMessage:
     file_mime: str = ""           # MIME type
     is_edit: bool = False         # True if this is an edit of an existing message
     is_voice: bool = False        # True if this is a voice message (for Whisper)
+    reply_to_msg_id: Any = None   # Platform message ID this message replies to
     location: tuple[float, float] | None = None  # (lat, lon)
     venue_name: str = ""          # Venue name (if location is a venue)
     venue_address: str = ""       # Venue address
@@ -47,6 +48,7 @@ class OutboundMessage:
     edit_platform_msg_id: Any = None  # Which message to edit
     is_delete: bool = False
     delete_platform_msg_id: Any = None
+    reply_to_platform_msg_id: Any = None  # Which platform message this should reply to
     reaction_emoji: str = ""          # Emoji to set
     reaction_msg_id: Any = None
     reaction_clear: bool = False      # Clear all reactions
