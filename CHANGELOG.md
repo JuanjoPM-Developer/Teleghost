@@ -2,6 +2,20 @@
 
 All notable changes to BridgeMost are documented here.
 
+## v2.2.6 (2026-04-23)
+
+### Fixed
+- **Mattermost token validation classification** — BridgeMost no longer labels every validation failure as `PAT EXPIRED`
+  - `401/403` still map to expired/rejected token alerts
+  - `500` and transport exceptions are now reported as Mattermost availability/validation failures
+- **Telegram handler error registration** — the Telegram adapter now registers a PTB error handler so the runtime stops emitting `No error handlers are registered`
+- **Mattermost post exception containment** — transport exceptions during MM post are converted into structured error results instead of bubbling through Telegram update handlers
+  - reduces noisy `TimeoutError` / `CancelledError` cascades when Mattermost is slow or unavailable
+
+### Changed
+- PAT health alerts now prefer raw operator text notifications over normal relay formatting when the adapter supports it
+- Version bumped to `2.2.6`
+
 ## v2.2.5 (2026-04-08)
 
 ### Added

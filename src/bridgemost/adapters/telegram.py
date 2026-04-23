@@ -108,11 +108,26 @@ class TelegramAdapter(BaseAdapter):
 
         # Reactions
         self._app.add_handler(MessageReactionHandler(self._on_tg_reaction))
+        self._app.add_error_handler(self._on_ptb_error)
 
         await self._app.initialize()
         await self._app.start()
         await self._app.updater.start_polling(drop_pending_updates=True, poll_interval=0.5)
         logger.info("Telegram adapter started")
+
+    async def _on_ptb_error(self, update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Centralize Telegram handler errors so PTB stops emitting its default warning."""
+        error = getattr(context, "error", None)
+        if isinstance(error, asyncio.CancelledError):
+            logger.warning("Telegram handler cancelled")
+            return
+        if isinstance(error, asyncio.TimeoutError):
+            logger.error("Telegram handler timeout: %s", error)
+            return
+        if error is not None:
+            logger.exception("Telegram handler error", exc_info=error)
+            return
+        logger.error("Telegram handler error without exception context")
 
     async def stop(self) -> None:
         """Stop Telegram bot."""
@@ -242,7 +257,10 @@ class TelegramAdapter(BaseAdapter):
             logger.error("TG media download error: %s", e)
 
         inbound.text = msg.text or msg.caption or ""
-        await self._on_message(inbound)
+        try:
+            await self._on_message(inbound)
+        except Exception as e:
+            logger.exception("TG inbound handler error: %s", e)
 
     @staticmethod
     def _normalize_command_text(text: str) -> str:
@@ -279,7 +297,10 @@ class TelegramAdapter(BaseAdapter):
             user_id=update.effective_user.id,
             text=text,
         )
-        await self._on_message(inbound)
+        try:
+            await self._on_message(inbound)
+        except Exception as e:
+            logger.exception("TG passthrough handler error: %s", e)
 
     async def _on_tg_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle edited TG message."""
@@ -297,7 +318,10 @@ class TelegramAdapter(BaseAdapter):
             text=msg.text or msg.caption or "",
             is_edit=True,
         )
-        await self._on_edit(inbound)
+        try:
+            await self._on_edit(inbound)
+        except Exception as e:
+            logger.exception("TG edit handler error: %s", e)
 
     async def _on_tg_reaction(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle TG reaction changes."""
@@ -326,7 +350,10 @@ class TelegramAdapter(BaseAdapter):
             reaction_removed=list(old_emojis - new_emojis) or None,
             reaction_msg_id=reaction_update.message_id,
         )
-        await self._on_reaction(inbound)
+        try:
+            await self._on_reaction(inbound)
+        except Exception as e:
+            logger.exception("TG reaction handler error: %s", e)
 
     # --- Commands ---
 

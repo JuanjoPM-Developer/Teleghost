@@ -13,6 +13,7 @@ class MattermostClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self._session: aiohttp.ClientSession | None = None
+        self.last_validate_error: dict | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -27,10 +28,25 @@ class MattermostClient:
             "Content-Type": "application/json",
         }
 
+    @staticmethod
+    def _extract_error_message(payload: object) -> str:
+        if isinstance(payload, dict):
+            for key in ("message", "error", "detailed_error", "id"):
+                value = payload.get(key)
+                if value:
+                    return str(value)
+        if payload is None:
+            return ""
+        return str(payload)
+
     async def post_message(
         self, token: str, channel_id: str, message: str, file_ids: list[str] | None = None
     ) -> dict:
-        """Post a message to a channel as the token owner."""
+        """Post a message to a channel as the token owner.
+
+        Returns a structured error dict instead of raising transport exceptions,
+        so upstream Telegram handlers do not bubble out noisy uncaught errors.
+        """
         session = await self._get_session()
         payload: dict = {
             "channel_id": channel_id,
@@ -39,17 +55,32 @@ class MattermostClient:
         if file_ids:
             payload["file_ids"] = file_ids
 
-        async with session.post(
-            f"{self.base_url}/api/v4/posts",
-            json=payload,
-            headers=self._headers(token),
-        ) as resp:
-            data = await resp.json()
-            if resp.status not in (200, 201):
-                logger.error("MM post failed (%d): %s", resp.status, data)
-            else:
+        try:
+            async with session.post(
+                f"{self.base_url}/api/v4/posts",
+                json=payload,
+                headers=self._headers(token),
+            ) as resp:
+                try:
+                    data = await resp.json()
+                except Exception:
+                    data = {"message": await resp.text()}
+                if resp.status not in (200, 201):
+                    message_text = self._extract_error_message(data) or f"HTTP {resp.status}"
+                    logger.error("MM post failed (%d): %s", resp.status, data)
+                    return {
+                        "message": message_text,
+                        "status_code": resp.status,
+                        "error_type": "HTTPError",
+                    }
                 logger.debug("MM post OK: %s", data.get("id"))
-            return data
+                return data
+        except Exception as e:
+            logger.exception("MM post exception")
+            return {
+                "message": f"Mattermost post exception: {type(e).__name__}: {e}",
+                "error_type": type(e).__name__,
+            }
 
     async def upload_file(
         self, token: str, channel_id: str, file_path: str, filename: str
@@ -117,18 +148,39 @@ class MattermostClient:
             return None
 
     async def validate_token(self, token: str) -> dict | None:
-        """Validate a personal access token. Returns user info or None."""
+        """Validate a personal access token. Returns user info or None.
+
+        Stores structured failure metadata on `last_validate_error` so callers can
+        distinguish auth problems from transient Mattermost availability issues.
+        """
         session = await self._get_session()
+        self.last_validate_error = None
         try:
             async with session.get(
                 f"{self.base_url}/api/v4/users/me",
                 headers=self._headers(token),
             ) as resp:
                 if resp.status == 200:
+                    self.last_validate_error = None
                     return await resp.json()
-                logger.error("Token validation failed (%d)", resp.status)
+                try:
+                    data = await resp.json()
+                except Exception:
+                    data = {"message": await resp.text()}
+                message_text = self._extract_error_message(data) or f"HTTP {resp.status}"
+                self.last_validate_error = {
+                    "kind": "http",
+                    "status": resp.status,
+                    "message": message_text,
+                }
+                logger.error("Token validation failed (%d): %s", resp.status, message_text)
                 return None
         except Exception as e:
+            self.last_validate_error = {
+                "kind": "exception",
+                "type": type(e).__name__,
+                "message": str(e),
+            }
             logger.error("Token validation exception: %s", e)
             return None
 

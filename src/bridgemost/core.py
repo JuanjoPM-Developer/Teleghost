@@ -24,6 +24,39 @@ from .whisper import WhisperClient
 logger = logging.getLogger("bridgemost.core")
 
 
+def describe_mm_validation_failure(error: dict | None) -> tuple[str, str]:
+    """Classify Mattermost token validation failures for operator-facing alerts."""
+    if not error:
+        return (
+            "unknown",
+            "⚠️ BridgeMost: Mattermost no disponible o validación fallida.",
+        )
+
+    if error.get("kind") == "http":
+        status = error.get("status")
+        if status in (401, 403):
+            return (
+                "auth",
+                "⚠️ BridgeMost: Token de Mattermost expirado o rechazado.",
+            )
+        return (
+            "availability",
+            f"⚠️ BridgeMost: Mattermost no disponible o validación fallida (HTTP {status}).",
+        )
+
+    if error.get("kind") == "exception":
+        error_type = error.get("type") or "Exception"
+        return (
+            "availability",
+            f"⚠️ BridgeMost: Mattermost no disponible o validación fallida ({error_type}).",
+        )
+
+    return (
+        "unknown",
+        "⚠️ BridgeMost: Mattermost no disponible o validación fallida.",
+    )
+
+
 class BridgeMostCore(TelegramPresentationMixin):
     """Platform-agnostic relay engine.
 
@@ -217,12 +250,22 @@ class BridgeMostCore(TelegramPresentationMixin):
                     for user in self.config.users:
                         info = await self.mm.validate_token(user.mm_token)
                         if not info:
-                            logger.error("PAT EXPIRED for %s", user.telegram_name)
-                            self.health.record_error()
-                            await self.adapter.send_message(
-                                user.telegram_id,
-                                OutboundMessage(text="⚠️ BridgeMost: Token de Mattermost expirado."),
+                            failure = self.mm.last_validate_error
+                            failure_kind, notice = describe_mm_validation_failure(failure)
+                            logger.error(
+                                "Mattermost token validation failed for %s (%s): %s",
+                                user.telegram_name,
+                                failure_kind,
+                                failure,
                             )
+                            self.health.record_error()
+                            if hasattr(self.adapter, "send_raw_text"):
+                                await self.adapter.send_raw_text(user.telegram_id, notice)
+                            else:
+                                await self.adapter.send_message(
+                                    user.telegram_id,
+                                    OutboundMessage(text=notice),
+                                )
         finally:
             self._running = False
             if self._ws:
