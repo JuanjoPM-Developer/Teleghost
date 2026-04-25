@@ -4,6 +4,9 @@ All notable changes to BridgeMost are documented here.
 
 ## v2.2.7 (2026-04-25)
 
+### Added
+- **Reply/thread sync carried forward from the local Gitea line** — Telegram replies now land in the correct Mattermost thread root, Mattermost threaded replies return to Telegram as native replies when the root message is known, and clean-mode placeholders preserve the original Telegram reply target.
+
 ### Fixed
 - **Telegram polling timeout wiring** — `polling.telegram_timeout` is now passed into PTB `start_polling(timeout=...)` for main relay and DM bridges instead of being dead config.
 - **Owner-only Telegram hardening** — Telegram updates outside private DMs, forwarded messages, and sender-chat messages are rejected before relay/command handling.
@@ -11,20 +14,29 @@ All notable changes to BridgeMost are documented here.
 - **Mattermost availability alert debounce** — transient validation failures now require confirmation before notifying Telegram and repeat periodically instead of spamming every health cycle.
 - **Disk-full logging resilience** — logging internal tracebacks are suppressed and unusable file handlers are skipped so ENOSPC does not flood journald while stdout logging remains available.
 - **Mattermost file upload resilience** — upload transport failures and non-JSON error bodies are contained and logged instead of bubbling out of Telegram handlers.
-
-## v2.2.6 (2026-04-23)
-
-### Fixed
-- **Mattermost token validation classification** — BridgeMost no longer labels every validation failure as `PAT EXPIRED`
-  - `401/403` still map to expired/rejected token alerts
-  - `500` and transport exceptions are now reported as Mattermost availability/validation failures
-- **Telegram handler error registration** — the Telegram adapter now registers a PTB error handler so the runtime stops emitting `No error handlers are registered`
-- **Mattermost post exception containment** — transport exceptions during MM post are converted into structured error results instead of bubbling through Telegram update handlers
-  - reduces noisy `TimeoutError` / `CancelledError` cascades when Mattermost is slow or unavailable
+- **Repo hygiene** — ignored `config.yaml.bak*` and kept examples/tests free of infra-specific names.
 
 ### Changed
-- PAT health alerts now prefer raw operator text notifications over normal relay formatting when the adapter supports it
-- Version bumped to `2.2.6`
+- Version bumped to `2.2.7`.
+
+## v2.2.6 (2026-04-10/23)
+
+### Added
+- **Reply/thread sync** — Telegram replies now land in the correct Mattermost thread root.
+- **Bidirectional reply mapping** — Mattermost threaded replies now return to Telegram as native replies when the root message is known.
+- **Clean-mode reply preservation** — the neural-link placeholder and final edited answer keep the original Telegram reply target.
+
+### Fixed
+- **Mattermost token validation classification** — BridgeMost no longer labels every validation failure as `PAT EXPIRED`.
+  - `401/403` still map to expired/rejected token alerts.
+  - `500` and transport exceptions are now reported as Mattermost availability/validation failures.
+- **Telegram handler error registration** — the Telegram adapter now registers a PTB error handler so the runtime stops emitting `No error handlers are registered`.
+- **Mattermost post exception containment** — transport exceptions during MM post are converted into structured error results instead of bubbling through Telegram update handlers.
+- **Owner-only Telegram ingress hardening** — rejected group traffic, `sender_chat` posts, and forwarded messages even when sent by an allowed user.
+
+### Changed
+- PAT health alerts now prefer raw operator text notifications over normal relay formatting when the adapter supports it.
+- Version bumped to `2.2.6`.
 
 ## v2.2.5 (2026-04-08)
 

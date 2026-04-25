@@ -113,8 +113,8 @@ users:
 # Users and tokens are inherited from the `users` section above.
 #
 # dm_bridges:
-#   - name: "apex"
-#     # Friendly name — used in logs and for the SQLite store file (dm_apex.db)
+#   - name: "assistant-a"
+#     # Friendly name — used in logs and for the SQLite store file (dm_assistant-a.db)
 #
 #     tg_bot_token: "YOUR_DEDICATED_TG_BOT_TOKEN"
 #     # Token for the bot dedicated to this MM bot
@@ -124,7 +124,7 @@ users:
 #     # Mattermost user ID of the target bot (26-char alphanumeric)
 #     # DM channel between the user and this bot is auto-discovered at startup
 #
-#   - name: "jarvis"
+#   - name: "assistant-b"
 #     tg_bot_token: "ANOTHER_DEDICATED_TG_BOT_TOKEN"
 #     mm_bot_id: "another_mm_bot_user_id_here"
 

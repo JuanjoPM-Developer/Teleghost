@@ -156,18 +156,18 @@ class TestDmBridgesConfig:
         cfg_file = self._write_config(tmp_path, {
             "dm_bridges": [
                 {
-                    "name": "apex",
-                    "tg_bot_token": "111:APEX_TOKEN",
-                    "mm_bot_id": "apexbot12345678901234567",
+                    "name": "assistant-dm",
+                    "tg_bot_token": "111:BOT_TOKEN",
+                    "mm_bot_id": "assistantbot12345678901234",
                 }
             ]
         })
         cfg = load_config(str(cfg_file))
         assert len(cfg.dm_bridges) == 1
         bridge = cfg.dm_bridges[0]
-        assert bridge.name == "apex"
-        assert bridge.tg_bot_token == "111:APEX_TOKEN"
-        assert bridge.mm_bot_id == "apexbot12345678901234567"
+        assert bridge.name == "assistant-dm"
+        assert bridge.tg_bot_token == "111:BOT_TOKEN"
+        assert bridge.mm_bot_id == "assistantbot12345678901234"
 
     def test_parses_multiple_dm_bridges(self, tmp_path):
         cfg_file = self._write_config(tmp_path, {

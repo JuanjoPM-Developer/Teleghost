@@ -174,6 +174,17 @@ class TelegramAdapter(BaseAdapter):
             return False
         return True
 
+    @staticmethod
+    def _reply_kwargs(msg: OutboundMessage) -> dict:
+        reply_to = getattr(msg, "reply_to_platform_msg_id", None)
+        if reply_to is None:
+            return {}
+        try:
+            reply_to = int(reply_to)
+        except (TypeError, ValueError):
+            pass
+        return {"reply_to_message_id": reply_to}
+
     async def _rate_wait(self):
         import time
         now = time.monotonic()
@@ -201,6 +212,7 @@ class TelegramAdapter(BaseAdapter):
         inbound = InboundMessage(
             platform_msg_id=msg.message_id,
             user_id=update.effective_user.id,
+            reply_to_msg_id=getattr(getattr(msg, "reply_to_message", None), "message_id", None),
         )
 
         # Download media to temp file
@@ -454,6 +466,7 @@ class TelegramAdapter(BaseAdapter):
             return None
 
         sent_id = None
+        reply_kwargs = self._reply_kwargs(msg)
 
         # Handle file sending with smart dispatch
         if msg.file_path:
@@ -465,26 +478,61 @@ class TelegramAdapter(BaseAdapter):
                 if mime.startswith("image/"):
                     if mime == "image/gif" or ext == ".gif":
                         with open(msg.file_path, "rb") as f:
-                            sent = await self._bot.send_animation(chat_id=user_id, animation=f, filename=msg.file_name)
-                    elif msg.file_size <= 10*1024*1024 and ext in (".jpg",".jpeg",".png",".webp"):
+                            sent = await self._bot.send_animation(
+                                chat_id=user_id,
+                                animation=f,
+                                filename=msg.file_name,
+                                **reply_kwargs,
+                            )
+                    elif msg.file_size <= 10*1024*1024 and ext in (".jpg", ".jpeg", ".png", ".webp"):
                         with open(msg.file_path, "rb") as f:
-                            sent = await self._bot.send_photo(chat_id=user_id, photo=f, filename=msg.file_name)
+                            sent = await self._bot.send_photo(
+                                chat_id=user_id,
+                                photo=f,
+                                filename=msg.file_name,
+                                **reply_kwargs,
+                            )
                     else:
                         with open(msg.file_path, "rb") as f:
-                            sent = await self._bot.send_document(chat_id=user_id, document=f, filename=msg.file_name)
+                            sent = await self._bot.send_document(
+                                chat_id=user_id,
+                                document=f,
+                                filename=msg.file_name,
+                                **reply_kwargs,
+                            )
                 elif mime.startswith("audio/"):
                     if ext == ".ogg" or mime == "audio/ogg":
                         with open(msg.file_path, "rb") as f:
-                            sent = await self._bot.send_voice(chat_id=user_id, voice=f, filename=msg.file_name)
+                            sent = await self._bot.send_voice(
+                                chat_id=user_id,
+                                voice=f,
+                                filename=msg.file_name,
+                                **reply_kwargs,
+                            )
                     else:
                         with open(msg.file_path, "rb") as f:
-                            sent = await self._bot.send_audio(chat_id=user_id, audio=f, filename=msg.file_name)
+                            sent = await self._bot.send_audio(
+                                chat_id=user_id,
+                                audio=f,
+                                filename=msg.file_name,
+                                **reply_kwargs,
+                            )
                 elif mime.startswith("video/"):
                     with open(msg.file_path, "rb") as f:
-                        sent = await self._bot.send_video(chat_id=user_id, video=f, filename=msg.file_name)
+                        sent = await self._bot.send_video(
+                            chat_id=user_id,
+                            video=f,
+                            filename=msg.file_name,
+                            **reply_kwargs,
+                        )
                 else:
                     with open(msg.file_path, "rb") as f:
-                        sent = await self._bot.send_document(chat_id=user_id, document=f, filename=msg.file_name)
+                        sent = await self._bot.send_document(
+                            chat_id=user_id,
+                            document=f,
+                            filename=msg.file_name,
+                            **reply_kwargs,
+                        )
 
                 sent_id = sent.message_id if sent else None
             except Exception as e:
@@ -493,18 +541,26 @@ class TelegramAdapter(BaseAdapter):
         # Handle text
         if msg.text:
             from ..markdown import mm_to_telegram
+
             chunks = split_message(msg.text)
             for i, chunk in enumerate(chunks):
                 await self._rate_wait()
                 try:
                     tg_text = mm_to_telegram(chunk)
+                    chunk_reply_kwargs = reply_kwargs if i == 0 and sent_id is None else {}
                     try:
                         sent = await self._bot.send_message(
-                            chat_id=user_id, text=tg_text, parse_mode="MarkdownV2",
+                            chat_id=user_id,
+                            text=tg_text,
+                            parse_mode="MarkdownV2",
+                            **chunk_reply_kwargs,
                         )
                     except Exception:
                         sent = await self._bot.send_message(
-                            chat_id=user_id, text=chunk, parse_mode=None,
+                            chat_id=user_id,
+                            text=chunk,
+                            parse_mode=None,
+                            **chunk_reply_kwargs,
                         )
                     if i == 0 and sent:
                         sent_id = sent.message_id

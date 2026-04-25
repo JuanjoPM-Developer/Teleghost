@@ -86,25 +86,25 @@ def _make_config():
         users=[
             UserMapping(
                 telegram_id=12345,
-                telegram_name="juanjo",
+                telegram_name="owner",
                 mm_user_id="user1234567890abcdef123456",
                 mm_token="pat-abc123",
                 bots=[
                     BotRoute(
-                        name="oceana",
+                        name="assistant",
                         mm_bot_id="bot12345678901234567890ab",
                         mm_dm_channel="dm-main-chan",
                         is_default=True,
                     )
                 ],
-                active_bot="oceana",
+                active_bot="assistant",
             )
         ],
         dm_bridges=[
             DmBridge(
                 tg_bot_token="111:ABC",
                 mm_bot_id="bot12345678901234567890ab",
-                name="oceana",
+                name="assistant",
             )
         ],
     )

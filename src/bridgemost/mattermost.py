@@ -40,7 +40,12 @@ class MattermostClient:
         return str(payload)
 
     async def post_message(
-        self, token: str, channel_id: str, message: str, file_ids: list[str] | None = None
+        self,
+        token: str,
+        channel_id: str,
+        message: str,
+        file_ids: list[str] | None = None,
+        root_id: str | None = None,
     ) -> dict:
         """Post a message to a channel as the token owner.
 
@@ -54,6 +59,8 @@ class MattermostClient:
         }
         if file_ids:
             payload["file_ids"] = file_ids
+        if root_id:
+            payload["root_id"] = root_id
 
         try:
             async with session.post(
@@ -190,6 +197,30 @@ class MattermostClient:
             }
             logger.error("Token validation exception: %s", e)
             return None
+
+    async def get_post(self, token: str, post_id: str) -> dict | None:
+        """Fetch a single Mattermost post by ID."""
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{self.base_url}/api/v4/posts/{post_id}",
+                headers=self._headers(token),
+            ) as resp:
+                data = await resp.json()
+                if resp.status == 200:
+                    return data
+                logger.error("MM get_post failed (%d): %s", resp.status, data)
+                return None
+        except Exception as e:
+            logger.error("MM get_post exception: %s", e)
+            return None
+
+    async def get_thread_root_id(self, token: str, post_id: str) -> str | None:
+        """Resolve a post ID to the root post ID of its Mattermost thread."""
+        post = await self.get_post(token, post_id)
+        if not post:
+            return post_id or None
+        return post.get("root_id") or post.get("id") or post_id
 
     async def get_posts_after(
         self, token: str, channel_id: str, after_id: str

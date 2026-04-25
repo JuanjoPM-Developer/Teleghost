@@ -153,7 +153,12 @@ class TelegramPresentationMixin:
                 pass
             state.placeholder_msg_id = None
 
-    async def _schedule_placeholder(self, channel_id: str, user_id: int) -> None:
+    async def _schedule_placeholder(
+        self,
+        channel_id: str,
+        user_id: int,
+        reply_to_platform_msg_id: int | None = None,
+    ) -> None:
         cfg = self._tp_config()
         if not self._telegram_clean_mode_enabled() or not getattr(cfg, "show_placeholder", True):
             return
@@ -169,28 +174,41 @@ class TelegramPresentationMixin:
 
         delay = max(0.0, float(getattr(cfg, "placeholder_delay_seconds", 1.2)))
         placeholder_text = getattr(cfg, "placeholder_text", "🧠⚡ Conectando a la red neuronal...")
+        placeholder_msg = OutboundMessage(
+            text=placeholder_text,
+            reply_to_platform_msg_id=reply_to_platform_msg_id,
+        )
 
         if delay == 0:
-            state.placeholder_msg_id = await self.adapter.send_message(
-                user_id, OutboundMessage(text=placeholder_text)
-            )
+            state.placeholder_msg_id = await self.adapter.send_message(user_id, placeholder_msg)
             return
 
         async def _show_placeholder() -> None:
             try:
                 await asyncio.sleep(delay)
-                state.placeholder_msg_id = await self.adapter.send_message(
-                    user_id, OutboundMessage(text=placeholder_text)
-                )
+                state.placeholder_msg_id = await self.adapter.send_message(user_id, placeholder_msg)
             except asyncio.CancelledError:
                 return
 
         state.placeholder_task = asyncio.create_task(_show_placeholder())
 
-    async def _present_visible_text(self, channel_id: str, user_id: int, mm_post_id: str, text: str):
+    async def _present_visible_text(
+        self,
+        channel_id: str,
+        user_id: int,
+        mm_post_id: str,
+        text: str,
+        reply_to_platform_msg_id: int | None = None,
+    ):
         cfg = self._tp_config()
         if not self._telegram_clean_mode_enabled():
-            sent_id = await self.adapter.send_message(user_id, OutboundMessage(text=text))
+            sent_id = await self.adapter.send_message(
+                user_id,
+                OutboundMessage(
+                    text=text,
+                    reply_to_platform_msg_id=reply_to_platform_msg_id,
+                ),
+            )
             if sent_id:
                 self._track_pair(sent_id, mm_post_id)
             return sent_id
@@ -222,7 +240,13 @@ class TelegramPresentationMixin:
                 self._track_pair(sent_id, mm_post_id)
             return sent_id
 
-        sent_id = await self.adapter.send_message(user_id, OutboundMessage(text=text))
+        sent_id = await self.adapter.send_message(
+            user_id,
+            OutboundMessage(
+                text=text,
+                reply_to_platform_msg_id=reply_to_platform_msg_id,
+            ),
+        )
         if sent_id:
             self._track_pair(sent_id, mm_post_id)
         return sent_id

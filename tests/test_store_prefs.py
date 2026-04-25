@@ -13,8 +13,8 @@ class TestActiveBot:
         with tempfile.TemporaryDirectory() as d:
             store = MessageStore(Path(d) / "test.db")
             store.open()
-            store.set_active_bot(12345, "agripinia")
-            assert store.get_active_bot(12345) == "agripinia"
+            store.set_active_bot(12345, "bot-gamma")
+            assert store.get_active_bot(12345) == "bot-gamma"
             store.close()
 
     def test_survives_restart(self):
@@ -22,32 +22,32 @@ class TestActiveBot:
             db = Path(d) / "test.db"
             store = MessageStore(db)
             store.open()
-            store.set_active_bot(12345, "jarvis")
+            store.set_active_bot(12345, "bot-beta")
             store.close()
 
             # Reopen — should persist
             store2 = MessageStore(db)
             store2.open()
-            assert store2.get_active_bot(12345) == "jarvis"
+            assert store2.get_active_bot(12345) == "bot-beta"
             store2.close()
 
     def test_update_overwrites(self):
         with tempfile.TemporaryDirectory() as d:
             store = MessageStore(Path(d) / "test.db")
             store.open()
-            store.set_active_bot(12345, "apex")
-            store.set_active_bot(12345, "agripinia")
-            assert store.get_active_bot(12345) == "agripinia"
+            store.set_active_bot(12345, "bot-alpha")
+            store.set_active_bot(12345, "bot-gamma")
+            assert store.get_active_bot(12345) == "bot-gamma"
             store.close()
 
     def test_multiple_users(self):
         with tempfile.TemporaryDirectory() as d:
             store = MessageStore(Path(d) / "test.db")
             store.open()
-            store.set_active_bot(111, "apex")
-            store.set_active_bot(222, "jarvis")
-            assert store.get_active_bot(111) == "apex"
-            assert store.get_active_bot(222) == "jarvis"
+            store.set_active_bot(111, "bot-alpha")
+            store.set_active_bot(222, "bot-beta")
+            assert store.get_active_bot(111) == "bot-alpha"
+            assert store.get_active_bot(222) == "bot-beta"
             store.close()
 
     def test_nonexistent_returns_none(self):
